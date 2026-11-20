@@ -13,6 +13,7 @@ import { google } from "googleapis";
 import { GoogleGenAI } from "@google/genai";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
+import { registerPhase1Routes } from "./phase1.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -61,6 +62,8 @@ const mediaUploadMiddleware = multer({
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use("/generated", express.static(generatedDir));
+
+registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeCommand });
 
 const defaultPrompt =
   "A colorful miniature toy kitchen playset on a soft blue playmat. A tiny pink toaster pops up plastic toast while a toy rescue truck rolls in to deliver ingredients. Bright studio lighting, overhead macro camera, clean original toy designs, gentle playful movement, no branded characters, no text.";

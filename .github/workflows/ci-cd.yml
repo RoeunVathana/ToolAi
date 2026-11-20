@@ -33,6 +33,9 @@ jobs:
       - name: Check server syntax
         run: node --check server/index.js
 
+      - name: Check Phase 1 server syntax
+        run: node --check server/phase1.js
+
       - name: Build client
         run: npm run build
 

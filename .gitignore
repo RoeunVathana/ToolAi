@@ -4,6 +4,8 @@ dist
 server/data
 server/generated
 server/incoming
+storage/phase1
+storage/.gitkeep
 *.mp4
 *.mov
 *.webm
