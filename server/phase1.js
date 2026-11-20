@@ -106,6 +106,70 @@ async function generateKhmerScript({ topic, durationMinutes, language }) {
   return { script, provider: "gemini", model };
 }
 
+async function normalizeVoiceClip(ffmpegCommand, inputPath, outputPath) {
+  await execFileAsync(ffmpegCommand, [
+    "-y", "-i", inputPath, "-ar", "24000", "-ac", "1", "-sample_fmt", "s16", outputPath,
+  ]);
+}
+
+function interactionAudioData(interaction) {
+  return interaction?.output_audio?.data || interaction?.outputAudio?.data || interaction?.steps
+    ?.filter((step) => step.type === "model_output")
+    .flatMap((step) => step.content || [])
+    .find((content) => content.type === "audio")?.data || "";
+}
+
+async function generateReplicatedVoiceover({ script, sourceAudioPath, consentAudioPath, ffmpegCommand }) {
+  if (!process.env.GEMINI_API_KEY) {
+    const error = new Error("Gemini is not configured. Upload a recorded narration instead, or configure Gemini voice replication.");
+    error.code = "GEMINI_NOT_CONFIGURED";
+    error.status = 503;
+    throw error;
+  }
+  const model = process.env.GEMINI_TTS_MODEL || "gemini-3.8-flash-tts";
+  const tempDir = path.dirname(sourceAudioPath);
+  const normalizedSource = path.join(tempDir, `${crypto.randomUUID()}-source.wav`);
+  const normalizedConsent = path.join(tempDir, `${crypto.randomUUID()}-consent.wav`);
+  try {
+    await normalizeVoiceClip(ffmpegCommand, sourceAudioPath, normalizedSource);
+    await normalizeVoiceClip(ffmpegCommand, consentAudioPath, normalizedConsent);
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { apiVersion: process.env.GEMINI_API_VERSION || "v1beta" } });
+    const replicatedVoice = await ai.voices.create({
+      store: false,
+      voice: {
+        model,
+        type: "replicated",
+        display_name: "ToolAiMe one-off user voice",
+        replicated: {
+          source_audio: { mime_type: "audio/wav", data: (await fs.readFile(normalizedSource)).toString("base64") },
+          consent_audio: { mime_type: "audio/wav", data: (await fs.readFile(normalizedConsent)).toString("base64") },
+        },
+      },
+    });
+    if (!replicatedVoice?.key) throw new Error("Gemini did not return a temporary replicated voice key.");
+    const interaction = await ai.interactions.create({
+      model,
+      input: [{
+        type: "user_input",
+        content: [{
+          type: "text",
+          text: script.slice(0, 30000),
+          annotations: [{ type: "speech_metadata", style: "natural Cambodian Khmer narration, warm and conversational, clear pronunciation, similar vocal character to the authorized reference speaker" }],
+        }],
+      }],
+      response_format: { type: "audio" },
+      generation_config: { speech_config: [{ voice: replicatedVoice.key }] },
+      store: false,
+    });
+    const audioData = interactionAudioData(interaction);
+    if (!audioData) throw new Error("Gemini did not return generated voice audio.");
+    return { audio: Buffer.from(audioData, "base64"), model, provider: "gemini", storageMode: "stateless" };
+  } finally {
+    await fs.rm(normalizedSource, { force: true }).catch(() => {});
+    await fs.rm(normalizedConsent, { force: true }).catch(() => {});
+  }
+}
+
 function ensureContained(root, candidate) {
   const resolvedRoot = path.resolve(root);
   const resolvedCandidate = path.resolve(candidate);
@@ -180,6 +244,15 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       const isAudio = file.mimetype.startsWith("audio/") && allowedAudioExtensions.has(extension);
       const isVideo = (file.mimetype === "video/mp4" || extension === ".mp4") && allowedVideoExtensions.has(extension);
       callback(isImage || isAudio || isVideo ? null : new Error("Only JPG, PNG, WebP, MP4, MP3, and WAV files are supported."), isImage || isAudio || isVideo);
+    },
+  });
+  const voiceUpload = multer({
+    dest: incomingRoot,
+    limits: { fileSize: 30 * 1024 * 1024 },
+    fileFilter: (_req, file, callback) => {
+      const extension = safeExtension(file.originalname);
+      const valid = file.mimetype.startsWith("audio/") && allowedAudioExtensions.has(extension);
+      callback(valid ? null : new Error("Voice samples must be MP3 or WAV files."), valid);
     },
   });
 
@@ -272,6 +345,37 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     } catch (error) {
       const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
       return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Gemini script generation failed.", code: error?.code || "GEMINI_ERROR" });
+    }
+  });
+
+  app.post("/api/v1/projects/:id/voice/generate", requireAuth, voiceUpload.fields([{ name: "sourceAudio", maxCount: 1 }, { name: "consentAudio", maxCount: 1 }]), async (req, res) => {
+    const files = req.files || {};
+    const sourceAudio = files.sourceAudio?.[0];
+    const consentAudio = files.consentAudio?.[0];
+    const tempPaths = [sourceAudio?.path, consentAudio?.path].filter(Boolean);
+    try {
+      const project = await ownedProject(req.params.id, req.userId);
+      if (!project) return res.status(404).json({ error: "Project not found." });
+      const body = z.object({ script: z.string().trim().min(1).max(30000), consent: z.string().refine((value) => value === "true", "Voice ownership consent is required.") }).parse(req.body || {});
+      if (!sourceAudio || !consentAudio) return res.status(400).json({ error: "Upload both a clean voice sample and a consent recording." });
+      const sourceDuration = await probeDuration(ffprobeCommand, sourceAudio.path);
+      if (sourceDuration < 10 || sourceDuration > 30) return res.status(400).json({ error: "The voice sample must be between 10 and 30 seconds." });
+      const consentDuration = await probeDuration(ffprobeCommand, consentAudio.path);
+      if (consentDuration < 2 || consentDuration > 30) return res.status(400).json({ error: "The consent recording must be between 2 and 30 seconds." });
+      const generated = await generateReplicatedVoiceover({ script: body.script, sourceAudioPath: sourceAudio.path, consentAudioPath: consentAudio.path, ffmpegCommand });
+      const projectDir = path.join(storageRoot, project.id);
+      await fs.mkdir(projectDir, { recursive: true });
+      const storedName = `${crypto.randomUUID()}-similar-voice.wav`;
+      const storagePath = ensureContained(storageRoot, path.join(projectDir, storedName));
+      await fs.writeFile(storagePath, generated.audio);
+      await prisma.mediaAsset.updateMany({ where: { projectId: project.id, type: "AUDIO" }, data: { displayOrder: { increment: 1 } } });
+      const asset = await prisma.mediaAsset.create({ data: { projectId: project.id, type: "AUDIO", filename: "generated-similar-voice.wav", storagePath, mimeType: "audio/wav", size: generated.audio.length, displayOrder: 0 } });
+      return res.status(201).json({ asset: { ...asset, previewUrl: `/api/v1/media/${asset.id}/preview` }, provider: generated.provider, model: generated.model, voiceMode: "similar-to-authorized-sample", storageMode: generated.storageMode, status: "completed" });
+    } catch (error) {
+      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
+      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Similar voice generation failed.", code: error?.code || "VOICE_GENERATION_ERROR" });
+    } finally {
+      await Promise.all(tempPaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => {})));
     }
   });
 

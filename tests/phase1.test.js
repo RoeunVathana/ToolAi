@@ -51,6 +51,13 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   assert.equal(gemini.response.status, 503);
   assert.equal(gemini.data.code, "GEMINI_NOT_CONFIGURED");
 
+  const missingVoiceInputs = new FormData();
+  missingVoiceInputs.append("script", "ស្គ្រីបសម្រាប់សម្លេងសាកល្បង");
+  missingVoiceInputs.append("consent", "true");
+  const missingVoice = await request(`/api/v1/projects/${projectId}/voice/generate`, { method: "POST", body: missingVoiceInputs }, ownerToken);
+  assert.equal(missingVoice.response.status, 400);
+  assert.match(missingVoice.data.error, /clean voice sample and a consent recording/i);
+
   const mediaDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolaime-phase1-"));
   const imagePath = path.join(mediaDir, "sample.png");
   const audioPath = path.join(mediaDir, "sample.wav");

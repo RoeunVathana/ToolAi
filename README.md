@@ -95,6 +95,7 @@ Without Gemini credentials, users can still register, create projects, write/edi
 - Auth: `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me`
 - Projects: `GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/:id`
 - Gemini: `POST /api/v1/gemini/generate-script`
+- Similar voice narration: `POST /api/v1/projects/:id/voice/generate`; requires a 10–30 second MP3/WAV reference sample, a 2–30 second consent recording, and explicit ownership confirmation. It uses a one-off Gemini replicated voice profile and saves the generated WAV as the project narration asset.
 - Media: `POST /api/v1/projects/:id/media`, `GET /api/v1/projects/:id/media`, `PATCH/DELETE /api/v1/media/:id`, `GET /api/v1/media/:id/preview`; accepts JPG, PNG, WebP, MP4, MP3, and WAV. MP4 files are stored and previewable as source assets; Phase 1 rendering still uses image assets plus narration.
 - Rendering: `POST /api/v1/projects/:id/render`, `GET /api/v1/render-jobs/:id`, `GET /api/v1/render-jobs/:id/download`
 
@@ -111,4 +112,4 @@ All relevant routes require a Bearer JWT and enforce project ownership.
 
 ## External integrations
 
-YouTube, Facebook, Gemini video, and other provider settings from the original repository remain optional and are not claimed as connected by Phase 1. Live Gemini script testing is blocked until a valid key is configured server-side. Publishing remains a later-phase workflow in the ToolAiMe dashboard.
+YouTube, Facebook, Gemini video, and other provider settings from the original repository remain optional and are not claimed as connected by Phase 1. Similar voice generation requires a Gemini paid-tier project, two authentic recordings from the same adult speaker, and the required consent statement; without those inputs, recorded narration upload remains the fallback. Publishing remains a later-phase workflow in the ToolAiMe dashboard.

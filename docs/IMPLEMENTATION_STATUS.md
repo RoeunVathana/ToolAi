@@ -41,6 +41,14 @@ The detailed mapping is in [docs/CHATGPT_SCRIPT_ALIGNMENT.md](CHATGPT_SCRIPT_ALI
 - Live Gemini connectivity — PASS: new Free-tier key generated in Google AI Studio, configured only in Railway secrets, and verified through the live Khmer script endpoint.
 - Railway deployment — PASS: PostgreSQL service attached, JWT/database variables configured, migrations and optional admin seed run at startup.
 
+## Phase 2 start — similar Khmer voice
+
+| Area | Status | Implemented files | Verification | Known limitations |
+| --- | --- | --- | --- | --- |
+| Similar voice narration | IN_PROGRESS | `server/phase1.js`, `src/main.jsx`, `src/styles.css` | Build and syntax checks pass; missing-input API validation is covered in `tests/phase1.test.js` | Live generation requires Gemini 3.8 Flash TTS voice replication access, an authentic 10–30 second sample, a 2–30 second same-speaker consent recording, and a supported paid-tier Gemini project; no voice was fabricated for testing |
+
+The implementation uses Gemini's stateless voice replication mode (`store: false`) and does not persist a voice profile. Generated WAV narration is saved as the project's newest audio asset so the existing FFmpeg render workflow can use it.
+
 ## Phase 2 gate
 
 Phase 2 has not started. It should begin only after the user supplies a valid database URL for normal local use and, if live AI generation is required, a newly created/revoked-safe Gemini key in `.env`.
