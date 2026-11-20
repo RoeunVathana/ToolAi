@@ -16,9 +16,11 @@ import ffprobeStatic from "ffprobe-static";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
-const generatedDir = path.join(__dirname, "generated");
 const incomingDir = path.join(__dirname, "incoming");
 const dataDir = path.join(__dirname, "data");
+// Railway mounts the persistent volume at server/data, so generated videos
+// survive service redeploys instead of disappearing from the preview URL.
+const generatedDir = path.join(dataDir, "generated");
 const libraryPath = path.join(dataDir, "library.json");
 const youtubeTokenPath = path.join(dataDir, "youtube-token.json");
 const facebookTokenPath = path.join(dataDir, "facebook-token.json");
