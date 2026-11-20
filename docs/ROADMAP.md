@@ -2,9 +2,9 @@
 
 ## Phase 1 — Local video MVP
 
-Status: `DONE` (live Gemini configuration remains optional and unverified).
+Status: `DONE` (live Gemini Free-tier configuration verified remotely).
 
-Acceptance: register/login, create a project, write or generate a Khmer script, upload images and narration, render a real H.264/AAC MP4 with FFmpeg, preview it, and download it with ownership checks.
+Acceptance: register/login, create a project, write or generate a Khmer script, upload images and narration, render a real H.264/AAC MP4 with FFmpeg, preview it, and download it with ownership checks. Verified remotely with the seeded admin account and FFprobe.
 
 ## Phase 2 — Khmer AI Voice
 
