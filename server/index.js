@@ -1280,7 +1280,34 @@ app.get("/api/auth/facebook/callback", async (req, res) => {
     pagesUrl.searchParams.set("fields", "id,name,access_token,tasks");
     pagesUrl.searchParams.set("access_token", userAccessToken);
     const pagesResponse = await facebookJson(pagesUrl.toString());
-    const pages = (pagesResponse.data || []).filter((page) => page.id && page.access_token).map((page) => ({ id: page.id, name: page.name || "Facebook Page", access_token: page.access_token, tasks: page.tasks || [] }));
+    const pages = [];
+    for (const page of pagesResponse.data || []) {
+      if (!page.id) continue;
+      let pageAccessToken = page.access_token;
+      let pageName = page.name || "Facebook Page";
+      let pageTasks = page.tasks || [];
+
+      // Facebook Login for Business can return the managed Page in /me/accounts
+      // without embedding its Page token. Resolve the Page directly before
+      // rejecting an otherwise valid connection.
+      if (!pageAccessToken) {
+        try {
+          const pageDetailsUrl = new URL(facebookGraphUrl(`/${page.id}`));
+          pageDetailsUrl.searchParams.set("fields", "id,name,access_token,tasks");
+          pageDetailsUrl.searchParams.set("access_token", userAccessToken);
+          const pageDetails = await facebookJson(pageDetailsUrl.toString());
+          pageAccessToken = pageDetails.access_token;
+          pageName = pageDetails.name || pageName;
+          pageTasks = pageDetails.tasks || pageTasks;
+        } catch {
+          // Keep checking any other Pages returned by Meta.
+        }
+      }
+
+      if (pageAccessToken) {
+        pages.push({ id: page.id, name: pageName, access_token: pageAccessToken, tasks: pageTasks });
+      }
+    }
     if (!pages.length) throw new Error("No Facebook Page with publishing access was returned.");
     facebookAuth = { userAccessToken, pages, activePageId: pages[0].id, connectedAt: new Date().toISOString() };
     await saveAuth(facebookTokenPath, facebookAuth);
