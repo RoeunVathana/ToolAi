@@ -26,6 +26,10 @@ const execFileAsync = promisify(execFile);
 const facebookGraphVersion = process.env.FB_GRAPH_VERSION || "v27.0";
 const geminiApiVersion = process.env.GEMINI_API_VERSION || "v1beta";
 const geminiRequestTimeout = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS || 20000);
+const geminiVideoRequestTimeout = Number(process.env.GEMINI_VIDEO_REQUEST_TIMEOUT_MS || 30000);
+const geminiVideoJobTimeout = Number(process.env.GEMINI_VIDEO_JOB_TIMEOUT_MS || 360000);
+const ffmpegThreads = String(Math.max(1, Number(process.env.FFMPEG_THREADS || 2)));
+const generationJobs = new Map();
 
 const uploadMiddleware = multer({
   dest: incomingDir,
@@ -33,6 +37,18 @@ const uploadMiddleware = multer({
   fileFilter: (_req, file, callback) => {
     const isVideo = file.mimetype.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(file.originalname);
     callback(isVideo ? null : new Error("Only MP4, MOV, or WebM video files are supported."), isVideo);
+  },
+});
+
+const mediaUploadMiddleware = multer({
+  dest: incomingDir,
+  limits: { fileSize: 500 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    const isMedia =
+      file.mimetype.startsWith("video/") ||
+      file.mimetype.startsWith("audio/") ||
+      /\.(mp4|mov|webm|mp3|wav|m4a|aac|ogg)$/i.test(file.originalname);
+    callback(isMedia ? null : new Error("Only common video or audio files are supported."), isMedia);
   },
 });
 
@@ -128,6 +144,13 @@ function hasGeminiConfig() {
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
+function getGeminiVideoModel() {
+  const configured = String(process.env.GEMINI_VIDEO_MODEL || "").trim();
+  // Veo 3 model IDs previously used by this app are no longer valid here.
+  if (!configured || /^(models\/)?veo-/i.test(configured)) return "gemini-omni-1.2-flash";
+  return configured;
+}
+
 function hasYoutubeConfig() {
   return Boolean(process.env.YT_CLIENT_ID && process.env.YT_CLIENT_SECRET);
 }
@@ -139,11 +162,11 @@ function hasFacebookConfig() {
   );
 }
 
-function createGeminiClient() {
+function createGeminiClient({ timeout = geminiRequestTimeout } = {}) {
   return new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
     apiVersion: geminiApiVersion,
-    httpOptions: { timeout: geminiRequestTimeout },
+    httpOptions: { timeout },
   });
 }
 
@@ -259,6 +282,11 @@ function aiProviderOptions() {
       { id: "gemini", label: "Gemini Omni video + sound", configured: hasGeminiConfig(), description: "Generates clips with synchronized audio directions." },
       { id: "external-upload", label: "Another AI tool", configured: true, description: "Generate with another tool, then upload its MP4 through the same publishing flow." },
     ],
+    media: {
+      configured: hasGeminiConfig(),
+      label: "Gemini media lab",
+      description: "Transcribes, translates, captions, and creates a voice track from an uploaded video.",
+    },
   };
 }
 
@@ -365,7 +393,7 @@ async function planStoryWithGemini({ prompt = defaultPrompt, sceneCount = 4, dur
   const generationPlan = createGenerationPlan(sceneCount, duration);
   const ai = createGeminiClient();
   const model = process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
-  const interaction = await ai.interactions.create({
+  const interaction = await withGeminiRetry(() => ai.interactions.create({
     model,
     input: `You are the normal Gemini story producer for a safe family-friendly toy video channel. Turn this idea into a production-ready plan for exactly ${generationPlan.count} scenes totaling ${generationPlan.targetDuration} seconds. Keep all characters and toys original; never use brand names or copyrighted characters. Write vivid but practical prompts for a video model. Include natural, original sound directions. Avoid scary, dangerous, sexual, political, or realistic child content.\n\nIDEA:\n${String(prompt).slice(0, 4000)}`,
     store: false,
@@ -374,7 +402,7 @@ async function planStoryWithGemini({ prompt = defaultPrompt, sceneCount = 4, dur
       mime_type: "application/json",
       schema: createStoryPlanSchema(generationPlan.count),
     },
-  });
+  }));
   const text = findTextContent(interaction);
   if (!text) throw new Error("Gemini returned no story plan.");
   let parsed;
@@ -403,6 +431,25 @@ function isTransientGeminiError(error) {
   const status = Number(error?.status || error?.code || error?.response?.status);
   const message = String(error?.message || error || "");
   return [429, 500, 502, 503, 504].includes(status) || /high demand|temporar|overload|unavailable|resource exhausted|try again later/i.test(message);
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function withGeminiRetry(operation, { attempts = 4, baseDelayMs = 1000 } = {}) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientGeminiError(error) || attempt === attempts - 1) throw error;
+      const delay = baseDelayMs * (2 ** attempt) + Math.floor(Math.random() * 500);
+      await sleep(delay);
+    }
+  }
+  throw lastError || new Error("Gemini request failed.");
 }
 
 async function planStoryWithProvider({ provider = process.env.AI_TEXT_PROVIDER || "gemini", prompt = defaultPrompt, sceneCount = 4, duration = 60 }) {
@@ -447,12 +494,11 @@ function findVideoContent(interaction) {
 }
 
 async function generateGeminiClip(prompt, index, total, duration) {
-  const ai = createGeminiClient();
-  const model = process.env.GEMINI_VIDEO_MODEL || "gemini-omni-1.2-flash";
+  const ai = createGeminiClient({ timeout: geminiVideoRequestTimeout });
+  const model = getGeminiVideoModel();
   let interaction = await ai.interactions.create({
     model,
     input: prompt,
-    background: true,
     store: false,
     response_format: {
       type: "video",
@@ -463,17 +509,20 @@ async function generateGeminiClip(prompt, index, total, duration) {
     },
   });
 
-  while (!["completed", "failed", "cancelled", "incomplete"].includes(interaction.status)) {
-    await new Promise((resolve) => setTimeout(resolve, 8000));
-    interaction = await ai.interactions.get(interaction.id);
+  const deadline = Date.now() + geminiVideoJobTimeout;
+  let video = findVideoContent(interaction);
+  while (!video && !["completed", "failed", "cancelled", "incomplete"].includes(interaction.status)) {
+    if (Date.now() >= deadline) throw new Error("Gemini video generation timed out. Try a shorter video or try again later.");
+    await sleep(8000);
+    interaction = await withGeminiRetry(() => ai.interactions.get(interaction.id), { attempts: 3, baseDelayMs: 1000 });
+    video = findVideoContent(interaction);
   }
 
-  if (interaction.status !== "completed") {
+  if (!video && interaction.status !== "completed") {
     const detail = interaction.errors?.map((item) => item.message).filter(Boolean).join("; ");
     throw new Error(detail || `Gemini video generation ended with status: ${interaction.status}.`);
   }
 
-  const video = findVideoContent(interaction);
   if (!video?.data && !video?.uri) throw new Error("Gemini returned no generated video.");
 
   const filename = `scene-${Date.now()}-${index + 1}.mp4`;
@@ -481,6 +530,17 @@ async function generateGeminiClip(prompt, index, total, duration) {
   if (video.data) {
     await fs.writeFile(outputPath, Buffer.from(video.data, "base64"));
   } else {
+    const fileId = video.uri.match(/\/files\/([^/:?]+)/)?.[1];
+    if (fileId) {
+      while (Date.now() < deadline) {
+        const file = await withGeminiRetry(() => ai.files.get({ name: `files/${fileId}` }), { attempts: 3, baseDelayMs: 1000 });
+        const state = String(file.state || "").toUpperCase();
+        if (state === "ACTIVE") break;
+        if (state === "FAILED") throw new Error(file.error?.message || "Gemini video processing failed.");
+        await sleep(5000);
+      }
+      if (Date.now() >= deadline) throw new Error("Gemini video processing timed out. Try a shorter video or try again later.");
+    }
     const response = await fetch(video.uri, { headers: { "x-goog-api-key": process.env.GEMINI_API_KEY } });
     if (!response.ok) throw new Error(`Gemini video download failed with status ${response.status}.`);
     await fs.writeFile(outputPath, Buffer.from(await response.arrayBuffer()));
@@ -591,7 +651,7 @@ async function renderVideo(inputPath, outputPath, format, inputHasAudio = true) 
   if (!inputHasAudio) args.push("-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
   args.push(
     "-map", "0:v:0", "-map", inputHasAudio ? "0:a:0?" : "1:a:0", "-vf", videoFilter,
-    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-r", "30",
+    "-c:v", "libx264", "-preset", "veryfast", "-threads", ffmpegThreads, "-pix_fmt", "yuv420p", "-r", "30",
     "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-shortest", outputPath,
   );
   try {
@@ -599,6 +659,229 @@ async function renderVideo(inputPath, outputPath, format, inputHasAudio = true) 
   } catch (error) {
     if (error.code === "ENOENT") throw new Error("FFmpeg and ffprobe are required to render the final video.");
     throw new Error(error.stderr || "FFmpeg could not render the final video.");
+  }
+  return outputPath;
+}
+
+function parseMediaSeconds(value, fallback = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, value);
+  const match = String(value || "").match(/([0-9]+(?:\.[0-9]+)?)s?$/i);
+  return match ? Math.max(0, Number(match[1])) : fallback;
+}
+
+async function getMediaDuration(filePath) {
+  try {
+    const { stdout } = await execFileAsync("ffprobe", [
+      "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filePath,
+    ]);
+    const duration = Number(stdout.trim());
+    return Number.isFinite(duration) && duration > 0 ? duration : 60;
+  } catch {
+    return 60;
+  }
+}
+
+function createMediaCaptionSchema() {
+  return {
+    type: "object",
+    properties: {
+      segments: {
+        type: "array",
+        minItems: 1,
+        maxItems: 120,
+        items: {
+          type: "object",
+          properties: {
+            start: { type: "number", description: "Start time in seconds." },
+            end: { type: "number", description: "End time in seconds." },
+            text: { type: "string", description: "Caption text in the target language." },
+          },
+          required: ["start", "end", "text"],
+        },
+      },
+    },
+    required: ["segments"],
+  };
+}
+
+function mediaLanguageLabel(language) {
+  return {
+    auto: "the original spoken language",
+    en: "English",
+    th: "Thai",
+    km: "Khmer (ភាសាខ្មែរ)",
+    vi: "Vietnamese",
+    zh: "Chinese",
+    ja: "Japanese",
+    ko: "Korean",
+    es: "Spanish",
+  }[language] || language;
+}
+
+function splitCaptionText(text) {
+  return String(text || "")
+    .split(/(?<=[.!?。！？])\s+|\r?\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function createDemoMediaSegments(transcript, duration) {
+  const parts = splitCaptionText(transcript);
+  const lines = parts.length
+    ? parts
+    : ["Demo caption: add a transcript or connect Gemini for automatic captions."];
+  const slot = Math.max(2, duration / lines.length);
+  return lines.map((text, index) => ({
+    start: Number((index * slot).toFixed(2)),
+    end: Number(Math.min(duration, (index + 1) * slot).toFixed(2)),
+    text: text.slice(0, 240),
+  }));
+}
+
+function normalizeMediaSegments(value, duration, fallbackText) {
+  const raw = Array.isArray(value) ? value : value?.segments;
+  const segments = (raw || [])
+    .map((segment, index) => {
+      const start = Math.min(duration, parseMediaSeconds(segment?.start, index * 4));
+      const end = Math.min(duration, Math.max(start + 0.5, parseMediaSeconds(segment?.end, start + 4)));
+      return { start: Number(start.toFixed(2)), end: Number(end.toFixed(2)), text: String(segment?.text || "").trim().slice(0, 240) };
+    })
+    .filter((segment) => segment.text && segment.end > segment.start)
+    .slice(0, 120);
+  return segments.length ? segments : createDemoMediaSegments(fallbackText, duration);
+}
+
+async function waitForGeminiFile(ai, uploaded) {
+  if (!uploaded?.name || uploaded.state !== "PROCESSING") return uploaded;
+  let file = uploaded;
+  const deadline = Date.now() + 180000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    file = await ai.files.get({ name: uploaded.name });
+    if (file.state === "ACTIVE") return file;
+    if (file.state === "FAILED") throw new Error(file.error?.message || "Gemini could not process the uploaded media.");
+  }
+  throw new Error("Gemini media processing timed out. Try a shorter video.");
+}
+
+async function createGeminiMediaSegments({ filePath, mimeType, transcript, sourceLanguage, targetLanguage, duration }) {
+  const ai = createGeminiClient();
+  const model = process.env.GEMINI_MEDIA_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
+  const translationRequest = targetLanguage && targetLanguage !== "auto" && targetLanguage !== sourceLanguage
+    ? `Translate every caption into ${mediaLanguageLabel(targetLanguage)}. Keep the meaning natural and concise.`
+    : "Keep the captions in the spoken language.";
+  let mediaPart = null;
+  if (!transcript?.trim()) {
+    const uploaded = await waitForGeminiFile(ai, await ai.files.upload({ file: filePath, config: { mimeType } }));
+    if (!uploaded?.uri) throw new Error("Gemini did not return a usable media URI.");
+    mediaPart = { fileData: { fileUri: uploaded.uri, mimeType: uploaded.mimeType || mimeType } };
+  }
+  const prompt = [
+    "Create subtitle segments for this family-friendly video.",
+    `The video duration is about ${duration.toFixed(2)} seconds.`,
+    sourceLanguage && sourceLanguage !== "auto" ? `The spoken language is ${mediaLanguageLabel(sourceLanguage)}.` : "Detect the spoken language automatically.",
+    translationRequest,
+    "Return only JSON matching the schema. Use short captions, avoid overlapping segments, and keep timestamps inside the video duration.",
+    transcript?.trim() ? `Transcript supplied by the creator:\n${transcript.slice(0, 20000)}` : "Listen to the uploaded media and transcribe the spoken words.",
+  ].join("\n\n");
+  const contents = mediaPart ? [{ role: "user", parts: [{ text: prompt }, mediaPart] }] : prompt;
+  const response = await ai.models.generateContent({
+    model,
+    contents,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: createMediaCaptionSchema(),
+      temperature: 0.2,
+    },
+  });
+  let parsed;
+  try {
+    parsed = JSON.parse(response.text || "{}");
+  } catch {
+    throw new Error("Gemini returned invalid caption data. Please try again.");
+  }
+  return normalizeMediaSegments(parsed, duration, transcript);
+}
+
+function srtTimestamp(seconds) {
+  const milliseconds = Math.max(0, Math.round(Number(seconds || 0) * 1000));
+  const hours = Math.floor(milliseconds / 3600000);
+  const minutes = Math.floor((milliseconds % 3600000) / 60000);
+  const remaining = milliseconds % 60000;
+  const secs = Math.floor(remaining / 1000);
+  const ms = remaining % 1000;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+}
+
+async function writeSrt(segments, filePath) {
+  const contents = segments.map((segment, index) => `${index + 1}\n${srtTimestamp(segment.start)} --> ${srtTimestamp(segment.end)}\n${segment.text}\n`).join("\n");
+  await fs.writeFile(filePath, contents, "utf8");
+}
+
+function escapeSubtitleFilterPath(filePath) {
+  return `'${filePath.replaceAll("\\", "/").replaceAll(":", "\\:").replaceAll("'", "\\'")}'`;
+}
+
+async function burnSubtitles(inputPath, outputPath, subtitlePath) {
+  try {
+    await execFileAsync("ffmpeg", [
+      "-y", "-i", inputPath, "-vf", `subtitles=${escapeSubtitleFilterPath(subtitlePath)}:force_style='FontName=Arial,FontSize=20,Outline=2,Shadow=1,Alignment=2'`,
+      "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outputPath,
+    ]);
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error("FFmpeg is required to burn subtitles into the video.");
+    throw new Error(error.stderr || "FFmpeg could not burn the subtitle track.");
+  }
+  return outputPath;
+}
+
+async function createGeminiVoiceover(text, language, voice, outputBasePath) {
+  const ai = createGeminiClient();
+  const model = process.env.GEMINI_TTS_MODEL || "gemini-3.8-flash-tts";
+  const style = language === "km"
+    ? "warm, natural Cambodian Khmer narration with clear Khmer pronunciation"
+    : "warm, natural family-friendly narration";
+  const interaction = await ai.interactions.create({
+    model,
+    input: [{
+      type: "user_input",
+      content: [{
+        type: "text",
+        text: text.slice(0, 30000),
+        annotations: [{ type: "speech_metadata", style }],
+      }],
+    }],
+    response_format: { type: "audio" },
+    generation_config: { speech_config: [{ voice: voice || process.env.GEMINI_TTS_VOICE || "Kore" }] },
+    store: false,
+  });
+  const audioData = interaction.output_audio?.data || interaction.steps
+    ?.filter((step) => step.type === "model_output")
+    .flatMap((step) => step.content || [])
+    .find((content) => content.type === "audio")?.data;
+  if (!audioData) throw new Error("Gemini did not return voice audio. Check the configured TTS model.");
+  const filePath = `${outputBasePath}.wav`;
+  await fs.writeFile(filePath, Buffer.from(audioData, "base64"));
+  return filePath;
+}
+
+async function mixVoiceover(inputPath, voicePath, outputPath) {
+  const inputHasAudio = await hasAudioStream(inputPath);
+  const args = ["-y", "-i", inputPath, "-i", voicePath];
+  if (inputHasAudio) {
+    args.push(
+      "-filter_complex", "[0:a]volume=0.18[original];[1:a]volume=1.0,apad[dub];[original][dub]amix=inputs=2:duration=first:dropout_transition=2[a]",
+      "-map", "0:v:0", "-map", "[a]",
+    );
+  } else {
+    args.push("-filter_complex", "[1:a]apad[dub]", "-map", "0:v:0", "-map", "[dub]");
+  }
+  args.push("-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest", outputPath);
+  try {
+    await execFileAsync("ffmpeg", args);
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error("FFmpeg is required to add the generated voice track.");
+    throw new Error(error.stderr || "FFmpeg could not add the generated voice track.");
   }
   return outputPath;
 }
@@ -617,7 +900,7 @@ async function stitchScenes(videoUrls, format = "youtube") {
   const manifest = scenePaths.map((scenePath) => `file '${scenePath.replaceAll("'", "'\\''")}'`).join("\n");
   await fs.writeFile(manifestPath, manifest, "utf8");
   try {
-    await execFileAsync("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", manifestPath, "-c:v", "libx264", "-c:a", "aac", "-ar", "48000", "-ac", "2", sourcePath]);
+    await execFileAsync("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", manifestPath, "-c:v", "libx264", "-preset", "veryfast", "-threads", ffmpegThreads, "-c:a", "aac", "-ar", "48000", "-ac", "2", sourcePath]);
     return await renderVideo(sourcePath, outputPath, format, await hasAudioStream(sourcePath));
   } catch (error) {
     if (error.code === "ENOENT") throw new Error("FFmpeg and ffprobe are required to stitch the generated scenes.");
@@ -885,6 +1168,66 @@ app.post("/api/plan", async (req, res) => {
   }
 });
 
+function pruneGenerationJobs() {
+  const expiry = Date.now() - 30 * 60 * 1000;
+  for (const [jobId, job] of generationJobs) {
+    if (["completed", "failed"].includes(job.status) && job.updatedAt < expiry) generationJobs.delete(jobId);
+  }
+}
+
+function serializeGenerationJob(job) {
+  return {
+    mode: "gemini",
+    jobId: job.id,
+    status: job.status,
+    storyPlan: job.storyPlan || null,
+    warning: job.warning || null,
+    scenes: job.scenes || [],
+    totalDuration: job.totalDuration || 0,
+    sceneCount: job.sceneCount || 0,
+    error: job.error || null,
+  };
+}
+
+async function generateGeminiScenes({ prompt, sceneCount, duration, textProvider, suppliedStoryPlan }) {
+  const plan = createGenerationPlan(sceneCount, duration);
+  const storyPlan = suppliedStoryPlan?.sourcePrompt === prompt
+    ? normalizeStoryPlan(suppliedStoryPlan, plan, prompt)
+    : await planStoryWithProvider({ provider: textProvider, prompt, sceneCount, duration });
+  const prompts = storyPlan.scenes.map((scene) =>
+    `${prompt}\n\nScene direction: ${scene.prompt}\n\n${scene.audio}\n\n${audioDirection}`,
+  );
+  const scenes = [];
+  for (let index = 0; index < prompts.length; index += 1) {
+    scenes.push(await generateGeminiClip(prompts[index], index, prompts.length, plan.durations[index]));
+  }
+  return {
+    storyPlan,
+    warning: storyPlan.warning || null,
+    scenes,
+    totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0),
+    sceneCount: scenes.length,
+  };
+}
+
+function startGenerationJob(payload) {
+  pruneGenerationJobs();
+  const id = crypto.randomUUID();
+  const now = Date.now();
+  const job = { id, status: "queued", createdAt: now, updatedAt: now, sceneCount: createGenerationPlan(payload.sceneCount, payload.duration).count };
+  generationJobs.set(id, job);
+  void (async () => {
+    job.status = "running";
+    job.updatedAt = Date.now();
+    try {
+      Object.assign(job, await generateGeminiScenes(payload), { status: "completed", updatedAt: Date.now() });
+    } catch (error) {
+      Object.assign(job, { status: "failed", error: error.message || "Video generation failed.", updatedAt: Date.now() });
+    }
+  })();
+  return job;
+}
+
 app.post("/api/generate", async (req, res) => {
   const {
     prompt = defaultPrompt,
@@ -894,7 +1237,6 @@ app.post("/api/generate", async (req, res) => {
     videoProvider = process.env.AI_VIDEO_PROVIDER || "gemini",
     storyPlan: suppliedStoryPlan = null,
   } = req.body || {};
-  const plan = createGenerationPlan(sceneCount, duration);
   try {
     await fs.mkdir(generatedDir, { recursive: true });
     if (videoProvider === "external-upload") {
@@ -904,17 +1246,98 @@ app.post("/api/generate", async (req, res) => {
       const scenes = createDemoScenes(sceneCount, duration);
       return res.json({ mode: "demo", message: "Demo scenes ready. Add GEMINI_API_KEY to generate real Gemini clips.", scenes, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
     }
-    const storyPlan = suppliedStoryPlan?.sourcePrompt === prompt
-      ? normalizeStoryPlan(suppliedStoryPlan, plan, prompt)
-      : await planStoryWithProvider({ provider: textProvider, prompt, sceneCount, duration });
-    const prompts = storyPlan.scenes.map((scene) =>
-      `${prompt}\n\nScene direction: ${scene.prompt}\n\n${scene.audio}\n\n${audioDirection}`,
-    );
-    const scenes = [];
-    for (let index = 0; index < prompts.length; index += 1) scenes.push(await generateGeminiClip(prompts[index], index, prompts.length, plan.durations[index]));
-    return res.json({ mode: "gemini", scenes, storyPlan, warning: storyPlan.warning || null, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
+    const job = startGenerationJob({ prompt, sceneCount, duration, textProvider, suppliedStoryPlan });
+    return res.status(202).json(serializeGenerationJob(job));
   } catch (error) {
     return res.status(500).json({ error: error.message || "Video generation failed." });
+  }
+});
+
+app.get("/api/generate/:jobId", (req, res) => {
+  pruneGenerationJobs();
+  const job = generationJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: "That video generation job is no longer available. Start it again." });
+  return res.status(job.status === "failed" ? 500 : 200).json(serializeGenerationJob(job));
+});
+
+app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req, res) => {
+  const tempInput = req.file?.path;
+  const cleanupPaths = [];
+  try {
+    if (!tempInput) throw new Error("Choose a video file for the AI Media Lab.");
+    if (!req.file.mimetype.startsWith("video/") && !/\.(mp4|mov|webm)$/i.test(req.file.originalname)) {
+      throw new Error("The AI Media Lab needs a video file so it can return a finished MP4.");
+    }
+    const includeSubtitles = String(req.body?.includeSubtitles) !== "false";
+    const includeDubbing = String(req.body?.includeDubbing) === "true";
+    const translate = String(req.body?.translate) !== "false";
+    const sourceLanguage = String(req.body?.sourceLanguage || "auto");
+    const requestedTargetLanguage = String(req.body?.targetLanguage || sourceLanguage || "auto");
+    const targetLanguage = translate ? requestedTargetLanguage : sourceLanguage;
+    const transcript = String(req.body?.transcript || "").trim();
+    const voice = String(req.body?.voice || "Kore");
+    const duration = await getMediaDuration(tempInput);
+    const usingGemini = hasGeminiConfig();
+    await fs.mkdir(generatedDir, { recursive: true });
+    const segments = usingGemini
+      ? await createGeminiMediaSegments({ filePath: tempInput, mimeType: req.file.mimetype || "video/mp4", transcript, sourceLanguage, targetLanguage, duration })
+      : normalizeMediaSegments(null, duration, transcript);
+    const warnings = [];
+    if (!usingGemini) {
+      warnings.push("Demo mode created a timed caption preview. Add GEMINI_API_KEY for automatic transcription, translation, and realistic voice.");
+    }
+
+    let subtitlePath = null;
+    if (includeSubtitles) {
+      subtitlePath = path.join(generatedDir, `toypost-captions-${Date.now()}.srt`);
+      await writeSrt(segments, subtitlePath);
+    }
+
+    let currentPath = tempInput;
+    let voiceGenerated = false;
+    if (includeDubbing && usingGemini) {
+      const voicePath = await createGeminiVoiceover(
+        segments.map((segment) => segment.text).join(" "),
+        targetLanguage,
+        voice,
+        path.join(generatedDir, `toypost-voice-${Date.now()}`),
+      );
+      cleanupPaths.push(voicePath);
+      const mixedPath = path.join(generatedDir, `toypost-mixed-${Date.now()}.mp4`);
+      await mixVoiceover(currentPath, voicePath, mixedPath);
+      cleanupPaths.push(mixedPath);
+      currentPath = mixedPath;
+      voiceGenerated = true;
+    } else if (includeDubbing) {
+      warnings.push("The original audio was kept because realistic voice needs a configured Gemini API key.");
+    }
+
+    const outputPath = path.join(generatedDir, `toypost-media-${Date.now()}.mp4`);
+    if (subtitlePath) {
+      try {
+        await burnSubtitles(currentPath, outputPath, subtitlePath);
+      } catch (error) {
+        warnings.push(`Subtitle burn-in was skipped: ${error.message}`);
+        await fs.copyFile(currentPath, outputPath);
+      }
+    } else {
+      await fs.copyFile(currentPath, outputPath);
+    }
+
+    return res.json({
+      mode: usingGemini ? "gemini" : "demo",
+      videoUrl: `/generated/${path.basename(outputPath)}`,
+      subtitleUrl: subtitlePath ? `/generated/${path.basename(subtitlePath)}` : null,
+      captions: segments.length,
+      language: targetLanguage,
+      voice: voiceGenerated ? "Gemini realistic voice" : "Original audio",
+      warnings,
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Media processing failed." });
+  } finally {
+    if (tempInput) await fs.rm(tempInput, { force: true });
+    await Promise.all(cleanupPaths.map((filePath) => fs.rm(filePath, { force: true })));
   }
 });
 

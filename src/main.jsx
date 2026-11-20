@@ -80,6 +80,15 @@ function App() {
   const [isPlanning, setIsPlanning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [localVideoFile, setLocalVideoFile] = useState(null);
+  const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
+  const [mediaFile, setMediaFile] = useState(null);
+  const [mediaSourceLanguage, setMediaSourceLanguage] = useState("auto");
+  const [mediaTargetLanguage, setMediaTargetLanguage] = useState("km");
+  const [mediaMode, setMediaMode] = useState("both");
+  const [mediaVoice, setMediaVoice] = useState("Kore");
+  const [mediaTranscript, setMediaTranscript] = useState("");
+  const [isProcessingMedia, setIsProcessingMedia] = useState(false);
+  const [mediaResult, setMediaResult] = useState(null);
   const [textProvider, setTextProvider] = useState("gemini");
   const [videoProvider, setVideoProvider] = useState("gemini");
   const [notice, setNotice] = useState(null);
@@ -157,6 +166,24 @@ function App() {
     }
   }
 
+  async function waitForGeneration(jobId) {
+    for (let attempt = 0; attempt < 360; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 5000));
+      const response = await fetch(`/api/generate/${encodeURIComponent(jobId)}`);
+      const data = await readApiResponse(response, "Video generation status was invalid.");
+      if (!response.ok) throw new Error(data.error || "Video generation failed.");
+      if (data.status === "completed") return data;
+      if (data.status === "failed") throw new Error(data.error || "Video generation failed.");
+      setNotice({
+        type: "info",
+        text: data.status === "queued"
+          ? "Your video is queued. This page will keep checking for the finished scenes."
+          : "Gemini is generating the scenes. This can take several minutes, so you can leave this tab open.",
+      });
+    }
+    throw new Error("Video generation took too long. Check Railway logs and try again.");
+  }
+
   async function generateVideo() {
     setIsGenerating(true);
     setNotice(null);
@@ -173,9 +200,10 @@ function App() {
           storyPlan: storyPlan?.sourcePrompt === form.prompt ? storyPlan : null,
         }),
       });
-      const data = await readApiResponse(response, "Video generation failed.");
+      let data = await readApiResponse(response, "Video generation failed.");
       if (!response.ok)
         throw new Error(data.error || "Video generation failed.");
+      if (data.jobId) data = await waitForGeneration(data.jobId);
       setScenes(data.scenes || []);
       if (data.storyPlan) {
         setStoryPlan(data.storyPlan);
@@ -200,8 +228,48 @@ function App() {
     }
   }
 
+  async function processMedia() {
+    if (!mediaFile) {
+      setNotice({ type: "error", text: "Choose a video first in AI Media Lab." });
+      return;
+    }
+    const isVideo = mediaFile.type.startsWith("video/") || /\.(mp4|mov|webm)$/i.test(mediaFile.name);
+    if (!isVideo || mediaFile.size > 500 * 1024 * 1024) {
+      setNotice({ type: "error", text: "Choose a video smaller than 500 MB." });
+      return;
+    }
+    setIsProcessingMedia(true);
+    setNotice(null);
+    setMediaResult(null);
+    setProcessedVideoUrl(null);
+    try {
+      const payload = new FormData();
+      payload.append("file", mediaFile);
+      payload.append("sourceLanguage", mediaSourceLanguage);
+      payload.append("targetLanguage", mediaTargetLanguage);
+      payload.append("voice", mediaVoice);
+      payload.append("translate", String(mediaMode === "translate" || mediaMode === "dub" || mediaMode === "both"));
+      payload.append("includeSubtitles", String(mediaMode === "subtitle" || mediaMode === "translate" || mediaMode === "both"));
+      payload.append("includeDubbing", String(mediaMode === "dub" || mediaMode === "both"));
+      if (mediaTranscript.trim()) payload.append("transcript", mediaTranscript.trim());
+      const response = await fetch("/api/media/process", { method: "POST", body: payload });
+      const data = await readApiResponse(response, "Media processing failed.");
+      if (!response.ok) throw new Error(data.error || "Media processing failed.");
+      setMediaResult(data);
+      setProcessedVideoUrl(data.videoUrl);
+      setNotice({
+        type: data.mode === "demo" || data.warnings?.length ? "info" : "success",
+        text: data.warnings?.[0] || "Your processed video is ready. It is now available in the publishing panel.",
+      });
+    } catch (error) {
+      setNotice({ type: "error", text: error.message });
+    } finally {
+      setIsProcessingMedia(false);
+    }
+  }
+
   async function uploadVideo() {
-    if (!scenes.length && !localVideoFile) {
+    if (!scenes.length && !localVideoFile && !processedVideoUrl) {
       setNotice({
         type: "error",
         text: "Generate a video first, then upload the finished MP4.",
@@ -220,7 +288,7 @@ function App() {
       payload.append("containsSyntheticMedia", "true");
       payload.append(
         "videoUrls",
-        JSON.stringify(scenes.map((scene) => scene.videoUrl).filter(Boolean)),
+        JSON.stringify(publishVideoUrls),
       );
       if (localVideoFile) payload.append("file", localVideoFile);
 
@@ -236,6 +304,7 @@ function App() {
         text: "Uploaded to YouTube as private. Open YouTube Studio to review and publish.",
       });
       setLocalVideoFile(null);
+      setProcessedVideoUrl(null);
     } catch (error) {
       setNotice({ type: "error", text: error.message });
     } finally {
@@ -244,7 +313,7 @@ function App() {
   }
 
   async function uploadFacebookVideo() {
-    if (!scenes.length && !localVideoFile) {
+    if (!scenes.length && !localVideoFile && !processedVideoUrl) {
       setNotice({
         type: "error",
         text: "Generate a video first, then upload the finished MP4.",
@@ -259,7 +328,7 @@ function App() {
       payload.append("description", form.description);
       payload.append(
         "videoUrls",
-        JSON.stringify(scenes.map((scene) => scene.videoUrl).filter(Boolean)),
+        JSON.stringify(publishVideoUrls),
       );
       if (localVideoFile) payload.append("file", localVideoFile);
 
@@ -275,6 +344,7 @@ function App() {
         text: "Published to your Facebook Page.",
       });
       setLocalVideoFile(null);
+      setProcessedVideoUrl(null);
     } catch (error) {
       setNotice({ type: "error", text: error.message });
     } finally {
@@ -283,7 +353,7 @@ function App() {
   }
 
   async function publishBoth() {
-    if (!scenes.length && !localVideoFile) {
+    if (!scenes.length && !localVideoFile && !processedVideoUrl) {
       setNotice({
         type: "error",
         text: "Generate a video first, then publish the finished MP4.",
@@ -303,7 +373,7 @@ function App() {
       payload.append("targets", JSON.stringify(["youtube", "facebook"]));
       payload.append(
         "videoUrls",
-        JSON.stringify(scenes.map((scene) => scene.videoUrl).filter(Boolean)),
+        JSON.stringify(publishVideoUrls),
       );
       if (localVideoFile) payload.append("file", localVideoFile);
 
@@ -322,6 +392,7 @@ function App() {
           : "Uploaded privately to YouTube and published as a Facebook Page Reel.",
       });
       setLocalVideoFile(null);
+      setProcessedVideoUrl(null);
     } catch (error) {
       setNotice({ type: "error", text: error.message });
     } finally {
@@ -347,7 +418,10 @@ function App() {
     }
   }
 
-  const hasRealVideo = Boolean(localVideoFile || scenes.some((scene) => scene.videoUrl));
+  const hasRealVideo = Boolean(localVideoFile || processedVideoUrl || scenes.some((scene) => scene.videoUrl));
+  const publishVideoUrls = processedVideoUrl
+    ? [processedVideoUrl]
+    : scenes.map((scene) => scene.videoUrl).filter(Boolean);
   const youtubeChannelLabel = health.youtubeChannel
     ? `${health.youtubeChannel.title}${health.youtubeChannel.handle ? ` · ${health.youtubeChannel.handle}` : ""}`
     : "One-time sign-in required";
@@ -394,6 +468,12 @@ function App() {
             <span className="nav-count">{library.length}</span>
           </button>
           <button
+            className={activeNav === "media" ? "nav-item active" : "nav-item"}
+            onClick={() => setActiveNav("media")}
+          >
+            <span className="nav-icon">◌</span> AI Media Lab <span className="nav-badge">AI</span>
+          </button>
+          <button
             className={activeNav === "channel" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("channel")}
           >
@@ -424,9 +504,9 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb">
-            <span>New post</span>
+            <span>{activeNav === "media" ? "AI Media Lab" : activeNav === "channel" ? "Channel setup" : "New post"}</span>
             <i>/</i>
-            <strong>Generate a video</strong>
+            <strong>{activeNav === "media" ? "Dub and translate" : activeNav === "channel" ? "Connections" : "Generate a video"}</strong>
           </div>
           <div className="top-actions">
             <div
@@ -455,14 +535,9 @@ function App() {
         <div className="page-wrap">
           <section className="page-heading">
             <div>
-              <p className="eyebrow">CREATE A NEW POST</p>
-              <h1>
-                Turn a toy idea into a <em>YouTube video.</em>
-              </h1>
-              <p className="heading-copy">
-                Describe the playset adventure you want to make. ToyPost turns
-                it into a bright, original video that is ready for review.
-              </p>
+              <p className="eyebrow">{activeNav === "media" ? "PREPARE YOUR MEDIA" : activeNav === "channel" ? "PUBLISHING CONNECTIONS" : "CREATE A NEW POST"}</p>
+              <h1>{activeNav === "media" ? <>Make one video work in <em>every language.</em></> : activeNav === "channel" ? <>Choose where your <em>video goes.</em></> : <>Turn a toy idea into a <em>YouTube video.</em></>}</h1>
+              <p className="heading-copy">{activeNav === "media" ? "Create subtitles, translations, and a realistic voice track, then keep using the same publishing workflow." : activeNav === "channel" ? "Switch the YouTube channel or Facebook Page used by your next upload." : "Describe the playset adventure you want to make. ToyPost turns it into a bright, original video that is ready for review."}</p>
             </div>
             <div className="heading-badge">
               <span className="sparkle">✦</span>
@@ -489,6 +564,33 @@ function App() {
 
           {activeNav === "library" ? (
             <LibraryView library={library} onNew={() => setActiveNav("new")} />
+          ) : activeNav === "media" ? (
+            <MediaLabView
+              health={health}
+              mediaFile={mediaFile}
+              onSelectFile={(file) => {
+                setMediaFile(file);
+                setMediaResult(null);
+                setProcessedVideoUrl(null);
+              }}
+              sourceLanguage={mediaSourceLanguage}
+              setSourceLanguage={setMediaSourceLanguage}
+              targetLanguage={mediaTargetLanguage}
+              setTargetLanguage={setMediaTargetLanguage}
+              mode={mediaMode}
+              setMode={setMediaMode}
+              voice={mediaVoice}
+              setVoice={setMediaVoice}
+              transcript={mediaTranscript}
+              setTranscript={setMediaTranscript}
+              isProcessing={isProcessingMedia}
+              onProcess={processMedia}
+              result={mediaResult}
+              onUseForPublishing={() => {
+                setActiveNav("new");
+                setNotice({ type: "success", text: "Processed video attached to the publishing panel." });
+              }}
+            />
           ) : activeNav === "channel" ? (
             <ChannelView health={health} onSwitch={switchConnection} />
           ) : (
@@ -1027,6 +1129,192 @@ function EmptyPreview({ onGenerate }) {
         Generate preview <span>✦</span>
       </button>
     </div>
+  );
+}
+
+const mediaLanguages = [
+  { id: "auto", label: "Auto detect" },
+  { id: "en", label: "English" },
+  { id: "th", label: "Thai" },
+  { id: "km", label: "Khmer · ខ្មែរ" },
+  { id: "vi", label: "Vietnamese" },
+  { id: "zh", label: "Chinese" },
+  { id: "ja", label: "Japanese" },
+  { id: "ko", label: "Korean" },
+  { id: "es", label: "Spanish" },
+];
+
+function MediaLabView({
+  health,
+  mediaFile,
+  onSelectFile,
+  sourceLanguage,
+  setSourceLanguage,
+  targetLanguage,
+  setTargetLanguage,
+  mode,
+  setMode,
+  voice,
+  setVoice,
+  transcript,
+  setTranscript,
+  isProcessing,
+  onProcess,
+  result,
+  onUseForPublishing,
+}) {
+  const [sourcePreviewUrl, setSourcePreviewUrl] = useState(null);
+  const geminiReady = Boolean(health.aiProviders?.media?.configured || health.geminiConfigured);
+  const modes = [
+    { id: "both", icon: "✦", title: "Dubbing + subtitles", copy: "Translate the voice and burn captions into the MP4." },
+    { id: "subtitle", icon: "CC", title: "AI subtitles", copy: "Create timed captions and an SRT download." },
+    { id: "translate", icon: "A文", title: "AI translate", copy: "Translate captions into a new language." },
+    { id: "dub", icon: "◖", title: "Realistic voice", copy: "Generate a warm Gemini voiceover." },
+  ];
+  const featureCards = [
+    ["◖", "AI Dubbing", "New language voice", "dub"],
+    ["CC", "AI Subtitle", "Timed captions", "subtitle"],
+    ["A文", "AI Translate", "Natural translation", "translate"],
+    ["♬", "Realistic Voice", "Warm narration", "dub"],
+  ];
+  const isKhmer = targetLanguage === "km";
+  useEffect(() => {
+    if (!mediaFile) {
+      setSourcePreviewUrl(null);
+      return undefined;
+    }
+    const previewUrl = URL.createObjectURL(mediaFile);
+    setSourcePreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [mediaFile]);
+  return (
+    <section className="media-lab card">
+      <div className="media-lab-hero">
+        <div>
+          <span className="step-label">AI MEDIA LAB</span>
+          <h2>Dub, subtitle, and translate your video</h2>
+          <p>Use one finished MP4, prepare the language track, then send the result to the same YouTube and Facebook publishing flow.</p>
+        </div>
+        <span className={`mode-label ${geminiReady ? "live" : "demo"}`}>{isKhmer ? "ខ្មែរ READY" : geminiReady ? "GEMINI READY" : "DEMO MODE"}</span>
+      </div>
+
+      {isKhmer && (
+        <div className="khmer-callout">
+          <span className="khmer-callout-mark">ខ្មែរ</span>
+          <div><strong>Khmer voice selected</strong><small>Gemini will translate and speak natural Cambodian Khmer.</small></div>
+          <span className="khmer-callout-check">✓</span>
+        </div>
+      )}
+
+      <div className="media-feature-grid">
+        {featureCards.map(([icon, title, copy, action]) => (
+          <button type="button" className={`media-feature ${mode === action ? "selected" : ""}`} key={title} onClick={() => setMode(action)}>
+            <span className="media-feature-icon">{icon}</span>
+            <strong>{title}</strong>
+            <small>{copy}</small>
+            {mode === action && <span className="media-feature-check">✓</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="media-workflow" aria-label="Media workflow">
+        <span className="media-workflow-step active"><b>01</b> Choose video</span>
+        <i>→</i>
+        <span className={mediaFile ? "media-workflow-step active" : "media-workflow-step"}><b>02</b> Prepare language</span>
+        <i>→</i>
+        <span className={result ? "media-workflow-step active" : "media-workflow-step"}><b>03</b> Publish result</span>
+      </div>
+
+      <div className="media-lab-grid">
+        <div className="media-lab-inputs">
+          <label className="local-file-control media-file-control">
+            <input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={(event) => onSelectFile(event.target.files?.[0] || null)} />
+            <span className="file-icon">▣</span>
+            <span>
+              <strong>{mediaFile ? mediaFile.name : "Choose a video to process"}</strong>
+              <small>{mediaFile ? `${(mediaFile.size / 1024 / 1024).toFixed(1)} MB · ready for AI` : "MP4, MOV, or WebM · up to 500 MB"}</small>
+            </span>
+            <span className="file-action">{mediaFile ? "Change" : "Choose"}</span>
+          </label>
+          {sourcePreviewUrl && (
+            <div className="media-source-preview">
+              <div className="media-preview-heading"><span>Original video</span><small>Preview only</small></div>
+              <video controls preload="metadata" src={sourcePreviewUrl} />
+            </div>
+          )}
+
+          <label className="field-label" htmlFor="media-transcript">
+            Transcript <span>Optional with Gemini · helpful in demo mode</span>
+          </label>
+          <textarea
+            id="media-transcript"
+            className="media-transcript"
+            value={transcript}
+            onChange={(event) => setTranscript(event.target.value)}
+            placeholder="Paste a transcript here, or leave it blank and Gemini will listen to the uploaded video."
+          />
+        </div>
+
+        <div className="media-lab-settings">
+          <label className="provider-field">
+            <span>Process</span>
+            <select value={mode} onChange={(event) => setMode(event.target.value)}>
+              {modes.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+            </select>
+          </label>
+          <div className="media-mode-copy">{modes.find((item) => item.id === mode)?.copy}</div>
+          <div className="media-language-row">
+            <label className="provider-field">
+              <span>Source language</span>
+              <select value={sourceLanguage} onChange={(event) => setSourceLanguage(event.target.value)}>
+                {mediaLanguages.map((language) => <option key={language.id} value={language.id}>{language.label}</option>)}
+              </select>
+            </label>
+            <label className="provider-field">
+              <span>Target language</span>
+              <select value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)}>
+                {mediaLanguages.filter((language) => language.id !== "auto").map((language) => <option key={language.id} value={language.id}>{language.label}</option>)}
+              </select>
+            </label>
+          </div>
+          {(mode === "dub" || mode === "both") && (
+            <label className="provider-field">
+              <span>Voice</span>
+              <select value={voice} onChange={(event) => setVoice(event.target.value)}>
+                <option value="Kore">Kore · warm</option>
+                <option value="Aoede">Aoede · bright</option>
+                <option value="Puck">Puck · playful</option>
+                <option value="Charon">Charon · calm</option>
+              </select>
+            </label>
+          )}
+          <button className="primary-button media-process-button" onClick={onProcess} disabled={isProcessing || !mediaFile}>
+            {isProcessing ? "Processing media…" : "Process video"} <span>✦</span>
+          </button>
+          <small className="media-hint">{targetLanguage === "km" && (mode === "dub" || mode === "both") ? "Khmer voice is generated as natural Cambodian narration." : geminiReady ? "Gemini can transcribe the video, translate it, and create the selected voice track." : "Add GEMINI_API_KEY to enable automatic transcription, translation, and realistic voice."}</small>
+        </div>
+      </div>
+
+      {result && (
+        <div className="media-result">
+          <div className="media-result-preview">
+            <video controls preload="metadata" src={result.videoUrl} />
+          </div>
+          <div className="media-result-meta">
+            <span className="ready-dot" />
+            <strong>Processed video ready</strong>
+            <small>{result.captions} caption segments · {result.voice}</small>
+          </div>
+          <div className="media-result-actions">
+            <a className="secondary-button" href={result.videoUrl} target="_blank" rel="noreferrer">Preview MP4 ↗</a>
+            <a className="secondary-button" href={result.videoUrl} download>Download MP4</a>
+            {result.subtitleUrl && <a className="secondary-button" href={result.subtitleUrl} download>Download SRT</a>}
+            <button className="primary-button" onClick={onUseForPublishing}>Use for publishing</button>
+          </div>
+          {result.warnings?.length > 0 && <p>{result.warnings.join(" ")}</p>}
+        </div>
+      )}
+    </section>
   );
 }
 
