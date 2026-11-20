@@ -639,6 +639,26 @@ function parseTags(value) {
   }
 }
 
+function parseYoutubeVideoId(value) {
+  try {
+    const parsed = new URL(String(value || "").trim());
+    const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    let candidate = "";
+    if (hostname === "youtu.be") {
+      candidate = parsed.pathname.split("/").filter(Boolean)[0] || "";
+    } else if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+      if (parsed.pathname === "/watch") candidate = parsed.searchParams.get("v") || "";
+      else {
+        const parts = parsed.pathname.split("/").filter(Boolean);
+        if (["shorts", "embed", "live"].includes(parts[0])) candidate = parts[1] || "";
+      }
+    }
+    return /^[A-Za-z0-9_-]{11}$/.test(candidate) ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
 function parseVideoUrls(value) {
   if (Array.isArray(value)) return value;
   if (typeof value !== "string") return [];
@@ -1089,6 +1109,28 @@ app.post("/api/connections/facebook/active", async (req, res) => {
 
 app.get("/api/presets", (_req, res) => res.json({ defaultPrompt, presets: scenePresets }));
 app.get("/api/library", async (_req, res) => res.json({ items: await readLibrary() }));
+app.get("/api/youtube/metadata", async (req, res) => {
+  const videoId = parseYoutubeVideoId(req.query?.url);
+  if (!videoId) return res.status(400).json({ error: "Paste a valid YouTube watch, Shorts, embed, or youtu.be link." });
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  try {
+    const response = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) throw new Error(`YouTube returned HTTP ${response.status}.`);
+    const data = await response.json();
+    return res.json({
+      id: videoId,
+      url: videoUrl,
+      title: data.title || "YouTube video",
+      authorName: data.author_name || "YouTube creator",
+      authorUrl: data.author_url || "",
+      thumbnailUrl: data.thumbnail_url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+    });
+  } catch (error) {
+    return res.status(502).json({ error: error.message || "YouTube metadata could not be loaded." });
+  }
+});
 
 app.get("/api/auth/youtube", (req, res) => {
   const redirectUri = youtubeRedirectUri(req);
@@ -1201,7 +1243,7 @@ function pruneGenerationJobs() {
 
 function isFreeTierVideoLimitError(error) {
   const message = String(error?.message || error || "");
-  return /free tier limit:\s*0|not available on free tier/i.test(message)
+  return /(?:free tier.*limit:\s*0|limit:\s*0.*free tier|not available on free tier)/i.test(message)
     && /video|gemini-omni|veo/i.test(message);
 }
 
