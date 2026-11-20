@@ -15,6 +15,8 @@ The existing Gemini scene-generation and social-publishing code remains availabl
 
 ## Local setup
 
+The development order follows [the ChatGPT script alignment](docs/CHATGPT_SCRIPT_ALIGNMENT.md). The current root app is the verified baseline while the Next.js/NestJS split is migrated in bounded, tested steps.
+
 PowerShell:
 
 ```powershell
@@ -25,6 +27,16 @@ npm run db:generate
 npm run db:migrate
 npm run db:seed
 npm run dev
+```
+
+If Docker Desktop is available, PostgreSQL can be started with:
+
+```powershell
+docker compose up -d postgres
+```
+
+```bash
+docker compose up -d postgres
 ```
 
 Bash:
@@ -81,6 +93,8 @@ All relevant routes require a Bearer JWT and enforce project ownership.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Database](docs/DATABASE.md)
+- [Implementation checklist](docs/IMPLEMENTATION_CHECKLIST.md)
+- [ChatGPT script alignment](docs/CHATGPT_SCRIPT_ALIGNMENT.md)
 - [Implementation status](docs/IMPLEMENTATION_STATUS.md)
 - [Roadmap](docs/ROADMAP.md)
 

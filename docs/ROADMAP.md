@@ -1,63 +1,76 @@
 # ToolAiMe Roadmap
 
-## Phase 1 — Local video MVP
+The delivery order follows the attached ChatGPT project script. The existing verified video MVP is preserved while the repository is moved toward the requested Next.js/NestJS architecture incrementally. See [ChatGPT script alignment](CHATGPT_SCRIPT_ALIGNMENT.md) for the mapping and non-negotiable rights/integration rules.
 
-Status: `DONE` (live Gemini Free-tier configuration verified remotely).
+## Phase 1 — Foundation and verified vertical slice
 
-Acceptance: register/login, create a project, write or generate a Khmer script, upload images and narration, render a real H.264/AAC MP4 with FFmpeg, preview it, and download it with ownership checks. Verified remotely with the seeded admin account and FFprobe.
+Status: `DONE` for the working baseline; `IN_PROGRESS` for target-architecture alignment.
 
-## Phase 2 — Khmer AI Voice
+Completed baseline: register/login, create a project, write or generate a Khmer script, upload images, narration, and permitted MP4 source media, render a real H.264/AAC MP4 with FFmpeg, preview it, and download it with ownership checks. Verified remotely with the seeded admin account and FFprobe.
+
+Foundation checklist from the script:
+
+- DONE — architecture, database, API, auth, dashboard, local storage, basic tests, and working vertical slice.
+- DONE — reproducible PostgreSQL Docker Compose service added at `docker-compose.yml`.
+- IN_PROGRESS — migrate bounded frontend/API capabilities to the requested Next.js App Router and NestJS TypeScript services without breaking the baseline.
+- TODO — add refresh-token rotation, workspace/RBAC isolation, durable queues, and Python processing only when their phase begins.
+
+## Phase 2 — AI Script and Khmer Voice
+
+Status: `TODO` (blocked until the Phase 1 foundation-alignment gate is reviewed).
+
+Dependency: Phase 1 foundation and provider configuration.
+
+Acceptance: provider-backed script/translation/TTS abstractions, only real supported Khmer voices, preview/download, speed controls, paragraph regeneration, narration history, and recorded-audio fallback.
+
+## Phase 3 — Video Generator
 
 Status: `TODO`.
 
-Dependency: Phase 1 workflow and provider configuration.
+Dependency: Phase 2 media and narration contracts.
 
-Acceptance: provider-backed TTS abstraction, only real supported Khmer voices, preview/download, speed controls, paragraph regeneration, narration history, and recorded-audio fallback.
+Acceptance: scene/timeline metadata, permitted media imports, subtitle support, FFmpeg rendering, preview, and export.
 
-## Phase 3 — Chinese Story Recap
+## Phase 4 — Chinese Story Recap
 
 Status: `TODO`.
 
-Dependency: Phase 2 plus authorized source-media workflow.
+Dependency: Phases 2 and 3 plus authorized source-media workflow.
 
 Acceptance: source permission tracking, transcription, scene analysis, natural Khmer recap, review/edit, subtitles, and final render without inventing unsupported events.
 
-## Phase 4 — Editor and additional AI tools
+## Phase 5 — Social connections
 
 Status: `TODO`.
 
-Dependency: stable media/render model.
+Dependency: approved render artifacts, secure credential storage, and official provider configuration.
 
-Acceptance: timeline operations, subtitles, audio mixing, thumbnail/metadata tools, converter/compressor, and batch processing.
+Acceptance: official YouTube OAuth/channel management and official Meta Page authorization/management are implemented independently, with confirmed operations and honest permission/error states.
 
-## Phase 5 — YouTube channel manager
+### YouTube channel manager
 
-Status: `TODO`.
-
-Dependency: approved render artifacts and secure credential storage.
+Dependency: Google OAuth configuration and required YouTube scopes.
 
 Acceptance: OAuth, token refresh, confirmed private upload, metadata, thumbnail, status tracking, published URL, quotas, and analytics.
 
-## Phase 6 — Facebook Page manager
-
-Status: `TODO`.
+### Facebook Page manager
 
 Dependency: Meta app configuration and Page permissions.
 
 Acceptance: Page OAuth, Page selection, confirmed Page video/Reel publishing, permission errors, and supported analytics.
 
-## Phase 7 — Auto publishing
+## Phase 6 — Auto publishing
 
 Status: `TODO`.
 
-Dependency: Phases 5 and 6.
+Dependency: YouTube and Facebook connections.
 
 Acceptance: approval gate, timezone-aware scheduling, Redis/BullMQ retries, duplicate prevention, logs, cancel/retry, and publication verification.
 
-## Phase 8 — Analytics and management
+## Phase 7 — Advanced tools and management
 
 Status: `TODO`.
 
-Dependency: real platform connections.
+Dependency: stable media/render model and the social/publishing phases.
 
-Acceptance: genuine project, processing, publishing, AI usage, and supported social metrics with honest empty states.
+Acceptance: timeline operations, subtitles, audio mixing, thumbnail/metadata tools, converter/compressor, batch processing, content calendar, and genuine analytics/cost reporting with honest empty states.

@@ -2,6 +2,17 @@
 
 Updated: 2026-11-21 (Asia/Bangkok)
 
+## Process alignment
+
+The attached ChatGPT project script is the process reference for future work. The current repository has a verified Phase 1 vertical slice, but its production baseline is still Vite/React + Express/JavaScript. The requested Next.js App Router + NestJS/TypeScript split is tracked as an incremental foundation migration and is not being claimed as complete.
+
+- `DONE` — architecture, Prisma schema/migrations, authentication, dashboard, local storage, CRUD, tests, and working render vertical slice.
+- `DONE` — reproducible PostgreSQL Docker Compose setup in `docker-compose.yml`.
+- `IN_PROGRESS` — bounded migration toward `apps/web` and `apps/api`; the root app remains the deployable baseline until replacement behavior is verified.
+- `TODO` — refresh tokens, workspace/RBAC isolation, Redis/BullMQ, Python processing, and later AI/social phases.
+
+The detailed mapping is in [docs/CHATGPT_SCRIPT_ALIGNMENT.md](CHATGPT_SCRIPT_ALIGNMENT.md).
+
 ## Phase 1
 
 | Area | Status | Implemented files | Verification | Known limitations |
