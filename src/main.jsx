@@ -1631,6 +1631,27 @@ function MediaLabView({
             </select>
           </label>
           <div className="media-mode-copy">{modes.find((item) => item.id === mode)?.copy}</div>
+          <div className="language-quick-switch" aria-label="Quick language direction">
+            <span>Language direction</span>
+            <button type="button" className={sourceLanguage === "km" && targetLanguage === "en" ? "selected" : ""} onClick={() => { setSourceLanguage("km"); setTargetLanguage("en"); }}>
+              ខ្មែរ → English
+            </button>
+            <button type="button" className={sourceLanguage === "en" && targetLanguage === "km" ? "selected" : ""} onClick={() => { setSourceLanguage("en"); setTargetLanguage("km"); }}>
+              English → ខ្មែរ
+            </button>
+            <button
+              type="button"
+              className="language-swap-button"
+              disabled={sourceLanguage === targetLanguage}
+              onClick={() => {
+                const currentSource = sourceLanguage === "auto" ? "en" : sourceLanguage;
+                setSourceLanguage(targetLanguage);
+                setTargetLanguage(currentSource);
+              }}
+            >
+              ⇄ Swap
+            </button>
+          </div>
           <div className="media-language-row">
             <label className="provider-field">
               <span>Source language</span>

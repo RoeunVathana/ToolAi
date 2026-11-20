@@ -2085,6 +2085,39 @@ input:focus,
   grid-template-columns: 1fr 1fr;
   gap: 9px;
 }
+.language-quick-switch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.language-quick-switch > span {
+  width: 100%;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+.language-quick-switch button {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+.language-quick-switch button:hover,
+.language-quick-switch button.selected {
+  border-color: rgba(98, 221, 194, 0.5);
+  background: rgba(98, 221, 194, 0.09);
+  color: var(--text);
+}
+.language-quick-switch button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .media-process-button {
   width: 100%;
   margin-top: 5px;
