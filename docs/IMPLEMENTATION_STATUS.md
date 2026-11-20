@@ -10,7 +10,7 @@ Updated: 2026-11-21 (Asia/Bangkok)
 | Authentication | DONE | `server/phase1.js`, `src/main.jsx` | Register, login, `/me`, JWT checks, password hashing tested | Access-token-only session; refresh-token rotation is deferred |
 | PostgreSQL + Prisma | DONE | `prisma/schema.prisma`, `prisma/migrations/`, `prisma/seed.js` | `prisma validate`, migration, reset, seed verified locally; Railway PostgreSQL service provisioned and production migration/seed startup verified | Local PostgreSQL still needs a valid `DATABASE_URL` password |
 | Project manager | DONE | `server/phase1.js`, `src/main.jsx` | Create/list/open/update/delete routes are ownership-scoped | Delete confirmation UI is deferred |
-| Gemini Khmer script | DONE | `server/phase1.js` | Provider call is real; remote admin workflow reached Gemini and the API returned its actual provider response | Railway Gemini credential currently returns Google `401 API key not valid`; manual editing remains available |
+| Gemini Khmer script | DONE | `server/phase1.js` | New Google AI Studio key verified remotely with real Khmer output using `gemini-3.5-flash-lite` | Free-tier quota/model availability can vary; manual editing remains available |
 | Manual script editing | DONE | `src/main.jsx` | Save route and wizard state verified | None known for Phase 1 scope |
 | Media upload/preview | DONE | `server/phase1.js`, `src/main.jsx` | JPG/PNG/WebP + MP3/WAV upload, validation, preview URLs, reorder/delete tested locally and remotely | Local/Railway volume storage only |
 | FFmpeg rendering | DONE | `server/phase1.js` | Generated sample PNG + WAV rendered remotely to MP4; FFprobe confirmed `mov,mp4,m4a,3gp,3g2,mj2` and 2 seconds | In-process job runner; no durable queue yet |
@@ -26,7 +26,7 @@ Updated: 2026-11-21 (Asia/Bangkok)
 - Prisma migration + seed on isolated PostgreSQL 18 — PASS.
 - `npm run test:phase1` — PASS: auth, ownership, missing Gemini configuration, upload validation, FFmpeg render, preview, download, and FFprobe verification.
 - Remote Railway smoke test — PASS: admin login, `/me`, project create/edit, image upload, audio upload, render, inline MP4 preview, download, and FFprobe verification. The temporary project was deleted after the test.
-- Live Gemini connectivity — BLOCKED by the configured Railway key being rejected with Google `401 API key not valid`; the API does not fabricate a script and manual editing remains available.
+- Live Gemini connectivity — PASS: new Free-tier key generated in Google AI Studio, configured only in Railway secrets, and verified through the live Khmer script endpoint.
 - Railway deployment — PASS: PostgreSQL service attached, JWT/database variables configured, migrations and optional admin seed run at startup.
 
 ## Phase 2 gate
