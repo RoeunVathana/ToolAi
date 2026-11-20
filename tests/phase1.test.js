@@ -64,8 +64,14 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   assert.equal(forbidden.response.status, 404);
 
   const gemini = await request("/api/v1/gemini/generate-script", { method: "POST", body: JSON.stringify({ projectId, topic: "សេចក្តីសប្បុរសក្នុងភូមិ", language: "km", durationMinutes: 1 }) }, ownerToken);
-  assert.equal(gemini.response.status, 503);
-  assert.equal(gemini.data.code, "GEMINI_NOT_CONFIGURED");
+  if (process.env.EXPECT_LIVE_GEMINI === "1") {
+    assert.equal(gemini.response.status, 200);
+    assert.equal(gemini.data.provider, "gemini");
+    assert.ok(gemini.data.script);
+  } else {
+    assert.equal(gemini.response.status, 503);
+    assert.equal(gemini.data.code, "GEMINI_NOT_CONFIGURED");
+  }
 
   const missingVoiceInputs = new FormData();
   missingVoiceInputs.append("script", "ស្គ្រីបសម្រាប់សម្លេងសាកល្បង");
@@ -132,5 +138,7 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   assert.ok(Number(JSON.parse(probe.stdout).format.duration) > 0);
   const download = await request(`/api/v1/render-jobs/${job.id}/download`, {}, ownerToken);
   assert.equal(download.response.status, 200);
+  const deleted = await request(`/api/v1/projects/${projectId}`, { method: "DELETE" }, ownerToken);
+  assert.equal(deleted.response.status, 204);
   await fs.rm(mediaDir, { recursive: true, force: true });
 });
