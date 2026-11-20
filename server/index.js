@@ -499,7 +499,9 @@ async function generateGeminiClip(prompt, index, total, duration) {
   let interaction = await ai.interactions.create({
     model,
     input: prompt,
-    store: false,
+    // Video generation runs as a background interaction and Gemini requires
+    // persisted interactions so the generated file can be polled/downloaded.
+    store: true,
     response_format: {
       type: "video",
       aspect_ratio: "16:9",
