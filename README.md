@@ -22,6 +22,7 @@ In the Railway service Variables tab, add:
 
 ```text
 GEMINI_API_KEY=your-Gemini-key
+GEMINI_API_VERSION=v1beta
 YT_CLIENT_ID=your-Google-OAuth-client-id
 YT_CLIENT_SECRET=your-Google-OAuth-client-secret
 YT_REDIRECT_URI=https://toolyoutubeandfacebookpage-production.up.railway.app/api/auth/youtube/callback

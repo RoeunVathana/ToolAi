@@ -24,6 +24,7 @@ const port = Number(process.env.PORT || 8787);
 const app = express();
 const execFileAsync = promisify(execFile);
 const facebookGraphVersion = process.env.FB_GRAPH_VERSION || "v27.0";
+const geminiApiVersion = process.env.GEMINI_API_VERSION || "v1beta";
 
 const uploadMiddleware = multer({
   dest: incomingDir,
@@ -133,6 +134,10 @@ function hasFacebookConfig() {
     (process.env.FB_APP_ID && process.env.FB_APP_SECRET) ||
       (process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN),
   );
+}
+
+function createGeminiClient() {
+  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: geminiApiVersion });
 }
 
 function youtubeRedirectUri(req) {
@@ -290,7 +295,7 @@ function normalizeStoryPlan(value, generationPlan, sourcePrompt) {
 
 async function planStoryWithGemini({ prompt = defaultPrompt, sceneCount = 4, duration = 60 }) {
   const generationPlan = createGenerationPlan(sceneCount, duration);
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = createGeminiClient();
   const model = process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
   const interaction = await ai.interactions.create({
     model,
@@ -338,7 +343,7 @@ function findVideoContent(interaction) {
 }
 
 async function generateGeminiClip(prompt, index, total, duration) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = createGeminiClient();
   const model = process.env.GEMINI_VIDEO_MODEL || "gemini-omni-1.2-flash";
   let interaction = await ai.interactions.create({
     model,
