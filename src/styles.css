@@ -1704,6 +1704,150 @@ input:focus,
 .page-heading.tools-page .toolchain-heading-override {
   display: block;
 }
+.youtube-source-heading-override {
+  display: none;
+}
+.page-heading.source-page > div:first-child > .eyebrow,
+.page-heading.source-page > div:first-child > h1,
+.page-heading.source-page > div:first-child > .heading-copy {
+  display: none;
+}
+.page-heading.source-page .youtube-source-heading-override {
+  display: block;
+}
+.youtube-source-view {
+  padding: 29px;
+  min-height: 520px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(238, 139, 125, 0.13), transparent 24%),
+    linear-gradient(145deg, rgba(15, 35, 50, 0.98), rgba(10, 23, 36, 0.96));
+}
+.youtube-source-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 23px;
+  border-bottom: 1px solid var(--line);
+}
+.youtube-source-hero h2 {
+  margin: 10px 0 8px;
+  font: 600 24px "Space Grotesk";
+  letter-spacing: -0.7px;
+}
+.youtube-source-hero p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.youtube-source-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr);
+  gap: 26px;
+  margin-top: 28px;
+}
+.youtube-source-form,
+.youtube-download-guide {
+  min-width: 0;
+}
+.youtube-url-row {
+  display: flex;
+  gap: 9px;
+}
+.youtube-url-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(165, 202, 221, 0.18);
+  border-radius: 8px;
+  outline: none;
+  color: #e7f0f3;
+  background: rgba(5, 17, 27, 0.5);
+  font-size: 13px;
+}
+.youtube-url-row input:focus {
+  border-color: rgba(98, 221, 194, 0.55);
+  box-shadow: 0 0 0 3px rgba(98, 221, 194, 0.06);
+}
+.youtube-url-row .primary-button {
+  flex: 0 0 auto;
+  min-width: 112px;
+}
+.youtube-source-hint {
+  display: block;
+  margin-top: 9px;
+  color: var(--muted-2);
+  font-size: 11px;
+}
+.youtube-source-result {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 22px;
+  padding: 12px;
+  border: 1px solid rgba(98, 221, 194, 0.2);
+  border-radius: 10px;
+  background: rgba(98, 221, 194, 0.05);
+}
+.youtube-source-result img {
+  width: 148px;
+  aspect-ratio: 16 / 9;
+  flex: 0 0 148px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #02070c;
+}
+.youtube-source-result h3 {
+  margin: 7px 0 5px;
+  color: #e7f0f3;
+  font: 600 16px "Space Grotesk";
+}
+.youtube-source-result p {
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.youtube-source-result a {
+  color: var(--mint);
+  font-size: 11px;
+  text-decoration: none;
+}
+.youtube-download-guide {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(5, 17, 27, 0.3);
+}
+.youtube-download-guide h3 {
+  margin: 9px 0 12px;
+  color: #e7f0f3;
+  font: 600 18px "Space Grotesk";
+}
+.youtube-download-guide ol {
+  display: grid;
+  gap: 9px;
+  margin: 0 0 17px;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.youtube-studio-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 37px;
+  color: var(--mint);
+  text-decoration: none;
+}
+.source-file-control {
+  margin-top: 16px;
+}
+.youtube-source-note {
+  margin-top: 22px;
+}
 .media-lab {
   padding: 29px;
   min-height: 520px;
@@ -2216,6 +2360,9 @@ input:focus,
   .toolchain-grid {
     grid-template-columns: 1fr;
   }
+  .youtube-source-layout {
+    grid-template-columns: 1fr;
+  }
   .settings-panel {
     padding: 0;
   }
@@ -2282,6 +2429,7 @@ input:focus,
   .preview-card,
   .upload-card,
   .toolchain-view,
+  .youtube-source-view,
   .media-lab,
   .library-view,
   .channel-view {
@@ -2291,6 +2439,13 @@ input:focus,
     display: block;
   }
   .toolchain-hero .mode-label {
+    display: inline-block;
+    margin-top: 15px;
+  }
+  .youtube-source-hero {
+    display: block;
+  }
+  .youtube-source-hero .mode-label {
     display: inline-block;
     margin-top: 15px;
   }
@@ -2360,6 +2515,20 @@ input:focus,
   }
   .top-actions {
     gap: 7px;
+  }
+  .youtube-url-row {
+    display: grid;
+  }
+  .youtube-url-row .primary-button {
+    width: 100%;
+  }
+  .youtube-source-result {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .youtube-source-result img {
+    width: 100%;
+    flex-basis: auto;
   }
   .breadcrumb {
     font-size: 10px;

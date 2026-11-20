@@ -22,6 +22,8 @@ The app bundles FFmpeg and FFprobe through `ffmpeg-static` and `ffprobe-static` 
 
 You can also choose an existing MP4, MOV, or WebM in the upload panel. This is useful when a video was generated outside ToyPost or when you want to review a manually edited cut. The destination buttons stay disabled until a real video and the matching verified channel/Page are available.
 
+The YouTube source page checks a YouTube link and then guides the owner through YouTube Studio's official download flow before importing the MP4 into ToyPost. It intentionally does not download arbitrary third-party streams.
+
 ## Railway YouTube setup
 
 In the Railway service Variables tab, add:

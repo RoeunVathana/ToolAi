@@ -437,6 +437,70 @@ function isTransientGeminiError(error) {
   return [429, 500, 502, 503, 504].includes(status) || /high demand|temporar|overload|unavailable|resource exhausted|try again later/i.test(message);
 }
 
+function normalizeProviderError(error, fallbackMessage) {
+  let parsed = error?.message || error || "";
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      // Keep ordinary provider messages as-is.
+    }
+  }
+  if (parsed?.error && typeof parsed.error === "object") parsed = parsed.error;
+  const message = String(parsed?.message || parsed || fallbackMessage).trim() || fallbackMessage;
+  const code = Number(parsed?.code || error?.status || error?.code || 0);
+  const providerStatus = String(parsed?.status || "").toUpperCase();
+  const retryInfo = Array.isArray(parsed?.details)
+    ? parsed.details.find((detail) => String(detail?.["@type"] || "").includes("RetryInfo"))
+    : null;
+  const retryMatch = String(retryInfo?.retryDelay || "").match(/([0-9]+(?:\.[0-9]+)?)s/i);
+  const retryAfterSeconds = retryMatch ? Math.ceil(Number(retryMatch[1])) : null;
+  const isQuotaError = code === 429 || providerStatus === "RESOURCE_EXHAUSTED" || /quota|rate limit|too many requests|exceeded your current/i.test(message);
+  if (isQuotaError) {
+    const retryText = retryAfterSeconds
+      ? ` Try again in about ${Math.max(1, Math.round(retryAfterSeconds / 60))} minutes.`
+      : " Try again later.";
+    return {
+      status: 429,
+      body: {
+        error: `Gemini quota is exhausted for this project or model.${retryText} You can use Built-in planner/demo mode while waiting.`,
+        code: "GEMINI_QUOTA_EXHAUSTED",
+        retryAfterSeconds,
+      },
+    };
+  }
+  return { status: 500, body: { error: message, code: "PROVIDER_ERROR" } };
+}
+
+async function createDemoMediaOutput({ inputPath, includeSubtitles, targetLanguage, transcript, warning }) {
+  const duration = await getMediaDuration(inputPath);
+  const segments = normalizeMediaSegments(null, duration, transcript);
+  let subtitlePath = null;
+  if (includeSubtitles) {
+    subtitlePath = path.join(generatedDir, `toypost-captions-${Date.now()}.srt`);
+    await writeSrt(segments, subtitlePath);
+  }
+  const outputPath = path.join(generatedDir, `toypost-media-demo-${Date.now()}.mp4`);
+  if (subtitlePath) {
+    try {
+      await burnSubtitles(inputPath, outputPath, subtitlePath);
+    } catch {
+      await fs.copyFile(inputPath, outputPath);
+    }
+  } else {
+    await fs.copyFile(inputPath, outputPath);
+  }
+  return {
+    mode: "demo",
+    videoUrl: `/generated/${path.basename(outputPath)}`,
+    subtitleUrl: subtitlePath ? `/generated/${path.basename(subtitlePath)}` : null,
+    captions: segments.length,
+    language: targetLanguage,
+    voice: "Original audio",
+    warnings: [warning],
+  };
+}
+
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -1230,7 +1294,8 @@ app.post("/api/plan", async (req, res) => {
     const storyPlan = await planStoryWithProvider(req.body || {});
     return res.json({ storyPlan, warning: storyPlan.warning || null });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Gemini planning failed." });
+    const normalized = normalizeProviderError(error, "Gemini planning failed.");
+    return res.status(normalized.status).json(normalized.body);
   }
 });
 
@@ -1259,6 +1324,8 @@ function serializeGenerationJob(job) {
     totalDuration: job.totalDuration || 0,
     sceneCount: job.sceneCount || 0,
     error: job.error || null,
+    errorCode: job.errorCode || null,
+    retryAfterSeconds: job.retryAfterSeconds || null,
   };
 }
 
@@ -1309,7 +1376,8 @@ function startGenerationJob(payload) {
           updatedAt: Date.now(),
         });
       } else {
-        Object.assign(job, { status: "failed", error: error.message || "Video generation failed.", updatedAt: Date.now() });
+        const normalized = normalizeProviderError(error, "Video generation failed.");
+        Object.assign(job, { status: "failed", error: normalized.body.error, errorCode: normalized.body.code, retryAfterSeconds: normalized.body.retryAfterSeconds || null, updatedAt: Date.now() });
       }
     }
   })();
@@ -1338,7 +1406,8 @@ app.post("/api/generate", async (req, res) => {
     const job = startGenerationJob({ prompt, sceneCount, duration, textProvider, suppliedStoryPlan });
     return res.status(202).json(serializeGenerationJob(job));
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Video generation failed." });
+    const normalized = normalizeProviderError(error, "Video generation failed.");
+    return res.status(normalized.status).json(normalized.body);
   }
 });
 
@@ -1352,6 +1421,7 @@ app.get("/api/generate/:jobId", (req, res) => {
 app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req, res) => {
   const tempInput = req.file?.path;
   const cleanupPaths = [];
+  let mediaOptions = null;
   try {
     if (!tempInput) throw new Error("Choose a video file for the AI Media Lab.");
     if (!req.file.mimetype.startsWith("video/") && !/\.(mp4|mov|webm)$/i.test(req.file.originalname)) {
@@ -1365,6 +1435,7 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     const targetLanguage = translate ? requestedTargetLanguage : sourceLanguage;
     const transcript = String(req.body?.transcript || "").trim();
     const voice = String(req.body?.voice || "Kore");
+    mediaOptions = { includeSubtitles, targetLanguage, transcript };
     const duration = await getMediaDuration(tempInput);
     const usingGemini = hasGeminiConfig();
     await fs.mkdir(generatedDir, { recursive: true });
@@ -1423,7 +1494,22 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
       warnings,
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Media processing failed." });
+    const normalized = normalizeProviderError(error, "Media processing failed.");
+    if (normalized.body.code === "GEMINI_QUOTA_EXHAUSTED" && tempInput && mediaOptions) {
+      try {
+        const fallback = await createDemoMediaOutput({
+          inputPath: tempInput,
+          includeSubtitles: mediaOptions.includeSubtitles,
+          targetLanguage: mediaOptions.targetLanguage,
+          transcript: mediaOptions.transcript,
+          warning: `${normalized.body.error} ToyPost created a demo caption preview and kept the original audio.`,
+        });
+        return res.json(fallback);
+      } catch {
+        // Return the original, readable quota response if the safe fallback cannot be rendered.
+      }
+    }
+    return res.status(normalized.status).json(normalized.body);
   } finally {
     if (tempInput) await fs.rm(tempInput, { force: true });
     await Promise.all(cleanupPaths.map((filePath) => fs.rm(filePath, { force: true })));

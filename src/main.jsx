@@ -49,22 +49,52 @@ const initialForm = {
   ],
 };
 
+function formatRetryDelay(value) {
+  const match = String(value || "").match(/([0-9]+(?:\.[0-9]+)?)s/i);
+  if (!match) return "";
+  const totalSeconds = Math.max(0, Math.round(Number(match[1])));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours) return `${hours} hour${hours === 1 ? "" : "s"}${minutes ? ` ${minutes} minute${minutes === 1 ? "" : "s"}` : ""}`;
+  return `${Math.max(1, minutes)} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function friendlyApiError(value, fallbackMessage) {
+  let parsed = value;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      // Keep the original text for ordinary, non-JSON errors.
+    }
+  }
+  if (parsed?.error && typeof parsed.error === "object") parsed = parsed.error;
+  const message = String(parsed?.message || parsed || "").trim();
+  const status = String(parsed?.status || parsed?.code || "").toUpperCase();
+  const retryInfo = Array.isArray(parsed?.details)
+    ? parsed.details.find((detail) => String(detail?.["@type"] || "").includes("RetryInfo"))
+    : null;
+  const retryDelay = formatRetryDelay(retryInfo?.retryDelay);
+  if (/^Gemini quota is exhausted/i.test(message)) return message;
+  if (status === "429" || status === "RESOURCE_EXHAUSTED" || /quota|rate limit|too many requests|exceeded your current/i.test(message)) {
+    return `Gemini quota is exhausted${retryDelay ? `; try again in about ${retryDelay}` : ""}. Use Built-in planner/demo mode now, or add billing/use another Gemini project when you need live AI processing.`;
+  }
+  if (/^upstream error$/i.test(message)) {
+    return "The remote AI service is temporarily unavailable. Please try again in a few seconds.";
+  }
+  return message || fallbackMessage;
+}
+
 async function readApiResponse(response, fallbackMessage) {
   const raw = await response.text();
   if (!raw.trim()) return {};
   try {
-    return JSON.parse(raw);
+    const data = JSON.parse(raw);
+    if (!response.ok && data.error) data.error = friendlyApiError(data.error, fallbackMessage);
+    return data;
   } catch {
-    const detail = raw.trim();
-    if (/^upstream error$/i.test(detail)) {
-      return {
-        error: `The remote server is temporarily unavailable (HTTP ${response.status}). Please try again in a few seconds.`,
-      };
-    }
     return {
-      error: response.ok
-        ? fallbackMessage
-        : `${fallbackMessage} (HTTP ${response.status}).`,
+      error: response.ok ? fallbackMessage : friendlyApiError(raw, `${fallbackMessage} (HTTP ${response.status}).`),
     };
   }
 }
@@ -92,6 +122,9 @@ function App() {
   const [mediaResult, setMediaResult] = useState(null);
   const [textProvider, setTextProvider] = useState("gemini");
   const [videoProvider, setVideoProvider] = useState("gemini");
+  const [youtubeSourceUrl, setYoutubeSourceUrl] = useState("");
+  const [youtubeSourceInfo, setYoutubeSourceInfo] = useState(null);
+  const [isCheckingYoutube, setIsCheckingYoutube] = useState(false);
   const [notice, setNotice] = useState(null);
   const [health, setHealth] = useState({
     demoMode: true,
@@ -256,7 +289,11 @@ function App() {
       if (mediaTranscript.trim()) payload.append("transcript", mediaTranscript.trim());
       const response = await fetch("/api/media/process", { method: "POST", body: payload });
       const data = await readApiResponse(response, "Media processing failed.");
-      if (!response.ok) throw new Error(data.error || "Media processing failed.");
+      if (!response.ok) {
+        const error = new Error(data.error || "Media processing failed.");
+        error.code = data.code;
+        throw error;
+      }
       setMediaResult(data);
       setProcessedVideoUrl(data.videoUrl);
       setNotice({
@@ -264,7 +301,7 @@ function App() {
         text: data.warnings?.[0] || "Your processed video is ready. It is now available in the publishing panel.",
       });
     } catch (error) {
-      setNotice({ type: "error", text: error.message });
+      setNotice({ type: error.code === "GEMINI_QUOTA_EXHAUSTED" ? "info" : "error", text: error.message });
     } finally {
       setIsProcessingMedia(false);
     }
@@ -420,6 +457,23 @@ function App() {
     }
   }
 
+  async function inspectYoutubeSource() {
+    setIsCheckingYoutube(true);
+    setYoutubeSourceInfo(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/youtube/metadata?url=${encodeURIComponent(youtubeSourceUrl)}`);
+      const data = await readApiResponse(response, "Could not inspect the YouTube link.");
+      if (!response.ok) throw new Error(data.error || "Could not inspect the YouTube link.");
+      setYoutubeSourceInfo(data);
+      setNotice({ type: "success", text: "YouTube link checked. Download your own video in YouTube Studio, then import the MP4 here." });
+    } catch (error) {
+      setNotice({ type: "error", text: error.message });
+    } finally {
+      setIsCheckingYoutube(false);
+    }
+  }
+
   function openMediaLab(nextMode = "both", targetLanguage = "km") {
     setMediaMode(nextMode);
     setMediaTargetLanguage(targetLanguage);
@@ -488,6 +542,12 @@ function App() {
             <span className="nav-icon">⌘</span> AI Toolchain
           </button>
           <button
+            className={activeNav === "source" ? "nav-item active" : "nav-item"}
+            onClick={() => setActiveNav("source")}
+          >
+            <span className="nav-icon">⇩</span> YouTube source
+          </button>
+          <button
             className={activeNav === "channel" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("channel")}
           >
@@ -518,9 +578,9 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb">
-            <span>{activeNav === "media" ? "AI Media Lab" : activeNav === "tools" ? "AI Toolchain" : activeNav === "channel" ? "Channel setup" : "New post"}</span>
+            <span>{activeNav === "media" ? "AI Media Lab" : activeNav === "tools" ? "AI Toolchain" : activeNav === "source" ? "YouTube source" : activeNav === "channel" ? "Channel setup" : "New post"}</span>
             <i>/</i>
-            <strong>{activeNav === "media" ? "Dub and translate" : activeNav === "tools" ? "Choose your process" : activeNav === "channel" ? "Connections" : "Generate a video"}</strong>
+            <strong>{activeNav === "media" ? "Dub and translate" : activeNav === "tools" ? "Choose your process" : activeNav === "source" ? "Import your own video" : activeNav === "channel" ? "Connections" : "Generate a video"}</strong>
           </div>
           <div className="top-actions">
             <div
@@ -559,6 +619,13 @@ function App() {
                   <p className="heading-copy">Pick the right AI tool for each stage, then move the finished video into one publishing workflow.</p>
                 </div>
               )}
+              {activeNav === "source" && (
+                <div className="youtube-source-heading-override">
+                  <p className="eyebrow">YOUTUBE SOURCE</p>
+                  <h1>Bring your own video <em>back into ToyPost.</em></h1>
+                  <p className="heading-copy">Check a YouTube link, download your authorized video from YouTube Studio, and import the MP4 for Khmer localization or publishing.</p>
+                </div>
+              )}
             </div>
             <div className="heading-badge">
               <span className="sparkle">✦</span>
@@ -585,6 +652,19 @@ function App() {
 
           {activeNav === "library" ? (
             <LibraryView library={library} onNew={() => setActiveNav("new")} />
+          ) : activeNav === "source" ? (
+            <YouTubeSourceView
+              url={youtubeSourceUrl}
+              setUrl={setYoutubeSourceUrl}
+              info={youtubeSourceInfo}
+              isChecking={isCheckingYoutube}
+              onCheck={inspectYoutubeSource}
+              onImportVideo={(file) => {
+                setLocalVideoFile(file);
+                setActiveNav("new");
+                setNotice({ type: "success", text: `${file.name} is ready in the publishing panel.` });
+              }}
+            />
           ) : activeNav === "tools" ? (
             <AiToolchainView
               health={health}
@@ -1168,6 +1248,80 @@ function EmptyPreview({ onGenerate }) {
         Generate preview <span>✦</span>
       </button>
     </div>
+  );
+}
+
+function YouTubeSourceView({ url, setUrl, info, isChecking, onCheck, onImportVideo }) {
+  return (
+    <section className="youtube-source-view card">
+      <div className="youtube-source-hero">
+        <div>
+          <span className="step-label">YOUTUBE SOURCE</span>
+          <h2>Import an authorized YouTube video</h2>
+          <p>Check the link here, then use the official YouTube Studio download for a video you own or have permission to reuse.</p>
+        </div>
+        <span className="mode-label live">OFFICIAL WORKFLOW</span>
+      </div>
+
+      <div className="youtube-source-layout">
+        <div className="youtube-source-form">
+          <label className="field-label" htmlFor="youtube-source-url">YouTube video URL</label>
+          <div className="youtube-url-row">
+            <input
+              id="youtube-source-url"
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && url.trim()) onCheck();
+              }}
+              placeholder="https://www.youtube.com/watch?v=..."
+              type="url"
+            />
+            <button className="primary-button" onClick={onCheck} disabled={isChecking || !url.trim()}>
+              {isChecking ? "Checking…" : "Check link"}
+            </button>
+          </div>
+          <small className="youtube-source-hint">Supported links: youtube.com/watch, youtu.be, Shorts, and embed URLs.</small>
+
+          {info && (
+            <article className="youtube-source-result">
+              <img src={info.thumbnailUrl} alt="" />
+              <div>
+                <span className="step-label">VIDEO FOUND</span>
+                <h3>{info.title}</h3>
+                <p>{info.authorName}</p>
+                <a href={info.url} target="_blank" rel="noreferrer">Open watch page</a>
+              </div>
+            </article>
+          )}
+        </div>
+
+        <div className="youtube-download-guide">
+          <span className="step-label">SAFE IMPORT PROCESS</span>
+          <h3>Download your own video in Studio</h3>
+          <ol>
+            <li>Open YouTube Studio and sign in.</li>
+            <li>Open Content, choose your video, then select the menu.</li>
+            <li>Choose Download, return here, and import the MP4.</li>
+          </ol>
+          <a className="secondary-button youtube-studio-link" href="https://studio.youtube.com/" target="_blank" rel="noreferrer">Open YouTube Studio</a>
+          <label className="local-file-control source-file-control">
+            <input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportVideo(file); }} />
+            <span className="file-icon">▣</span>
+            <span>
+              <strong>Import downloaded MP4</strong>
+              <small>Continue to Khmer audio, captions, or publishing</small>
+            </span>
+            <span className="file-action">Choose</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="toolchain-note youtube-source-note">
+        <span>i</span>
+        <p><strong>Important:</strong> this does not download arbitrary YouTube streams. It keeps your workflow inside the official Studio download path for videos you own or are authorized to reuse.</p>
+      </div>
+    </section>
   );
 }
 
