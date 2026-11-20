@@ -25,6 +25,7 @@ const app = express();
 const execFileAsync = promisify(execFile);
 const facebookGraphVersion = process.env.FB_GRAPH_VERSION || "v27.0";
 const geminiApiVersion = process.env.GEMINI_API_VERSION || "v1beta";
+const geminiRequestTimeout = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS || 20000);
 
 const uploadMiddleware = multer({
   dest: incomingDir,
@@ -139,7 +140,11 @@ function hasFacebookConfig() {
 }
 
 function createGeminiClient() {
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, apiVersion: geminiApiVersion });
+  return new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    apiVersion: geminiApiVersion,
+    httpOptions: { timeout: geminiRequestTimeout },
+  });
 }
 
 function youtubeRedirectUri(req) {
