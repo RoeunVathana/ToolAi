@@ -1276,7 +1276,14 @@ app.get("/api/auth/facebook/callback", async (req, res) => {
     } catch {
       // App development mode may not permit token exchange; the returned token can still be used.
     }
-    const pagesUrl = new URL(facebookGraphUrl("/me/accounts"));
+    // Meta's current User Accounts reference uses /{user-id}/accounts. Some
+    // Facebook Login for Business tokens do not resolve the /me shortcut
+    // consistently, even though the same user token is valid.
+    const meUrl = new URL(facebookGraphUrl("/me"));
+    meUrl.searchParams.set("fields", "id,name");
+    meUrl.searchParams.set("access_token", userAccessToken);
+    const me = await facebookJson(meUrl.toString());
+    const pagesUrl = new URL(facebookGraphUrl(`/${me.id || "me"}/accounts`));
     pagesUrl.searchParams.set("fields", "id,name,access_token,tasks");
     pagesUrl.searchParams.set("access_token", userAccessToken);
     const pagesResponse = await facebookJson(pagesUrl.toString());
