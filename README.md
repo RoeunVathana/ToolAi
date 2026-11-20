@@ -41,6 +41,17 @@ In Google Cloud, register the same `YT_REDIRECT_URI` as an authorized redirect U
 
 The upload defaults are intentionally prefilled for this channel concept: Made for kids, altered/synthetic content disclosed, Entertainment category, and private visibility on YouTube. API keys and refresh tokens stay server-side in `.env`. Add `APP_TOKEN_ENCRYPTION_KEY` if you want OAuth tokens to survive restarts in encrypted local storage. You can connect multiple YouTube accounts/channels; Channel setup and the upload panel let you select the active one. Use Add / switch to start another OAuth connection.
 
+## CI/CD deployment
+
+`.github/workflows/ci-cd.yml` validates pull requests and deploys successful pushes to `main` to Railway. In GitHub, open **Settings → Secrets and variables → Actions** and add:
+
+```text
+RAILWAY_TOKEN=your-Railway-project-token
+RAILWAY_PROJECT_ID=your-Railway-project-id
+```
+
+`RAILWAY_TOKEN` should be a Railway Project Token scoped to the production environment. You can optionally add the Actions variable `RAILWAY_ENVIRONMENT` if the environment is not named `production`. The workflow never stores Railway or app credentials in the repository. If Railway GitHub auto-deploy is already enabled for this service, use that built-in deploy or this workflow, not both, to avoid duplicate deployments.
+
 ## Facebook Page setup
 
 Create a Meta app with Facebook Login, add the Facebook Login valid OAuth redirect URI below, and add these Railway variables:
