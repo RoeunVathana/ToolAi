@@ -73,6 +73,10 @@ function formatProject(project) {
       ...asset,
       previewUrl: `/api/v1/media/${asset.id}/preview`,
     })),
+    renderJobs: project.renderJobs?.map((job) => ({
+      ...job,
+      downloadUrl: job.status === "COMPLETED" ? `/api/v1/render-jobs/${job.id}/download` : null,
+    })),
   };
 }
 
