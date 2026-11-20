@@ -72,7 +72,7 @@ Without Gemini credentials, users can still register, create projects, write/edi
 - Auth: `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me`
 - Projects: `GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/:id`
 - Gemini: `POST /api/v1/gemini/generate-script`
-- Media: `POST /api/v1/projects/:id/media`, `GET /api/v1/projects/:id/media`, `PATCH/DELETE /api/v1/media/:id`, `GET /api/v1/media/:id/preview`
+- Media: `POST /api/v1/projects/:id/media`, `GET /api/v1/projects/:id/media`, `PATCH/DELETE /api/v1/media/:id`, `GET /api/v1/media/:id/preview`; accepts JPG, PNG, WebP, MP4, MP3, and WAV. MP4 files are stored and previewable as source assets; Phase 1 rendering still uses image assets plus narration.
 - Rendering: `POST /api/v1/projects/:id/render`, `GET /api/v1/render-jobs/:id`, `GET /api/v1/render-jobs/:id/download`
 
 All relevant routes require a Bearer JWT and enforce project ownership.

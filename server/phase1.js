@@ -17,6 +17,7 @@ const accessSecret = process.env.JWT_ACCESS_SECRET || "development-only-change-m
 const accessTokenTtl = process.env.JWT_ACCESS_TTL || "2h";
 const allowedImageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const allowedAudioExtensions = new Set([".mp3", ".wav"]);
+const allowedVideoExtensions = new Set([".mp4"]);
 
 function phase1Paths(rootDir) {
   const storageRoot = path.resolve(process.env.STORAGE_PATH || path.join(rootDir, "storage"), "phase1");
@@ -177,7 +178,8 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       const extension = safeExtension(file.originalname);
       const isImage = file.mimetype.startsWith("image/") && allowedImageExtensions.has(extension);
       const isAudio = file.mimetype.startsWith("audio/") && allowedAudioExtensions.has(extension);
-      callback(isImage || isAudio ? null : new Error("Only JPG, PNG, WebP, MP3, and WAV files are supported."), isImage || isAudio);
+      const isVideo = (file.mimetype === "video/mp4" || extension === ".mp4") && allowedVideoExtensions.has(extension);
+      callback(isImage || isAudio || isVideo ? null : new Error("Only JPG, PNG, WebP, MP4, MP3, and WAV files are supported."), isImage || isAudio || isVideo);
     },
   });
 
@@ -278,9 +280,9 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     try {
       const project = await ownedProject(req.params.id, req.userId);
       if (!project) return res.status(404).json({ error: "Project not found." });
-      if (!req.file) return res.status(400).json({ error: "Choose an image or narration file." });
+      if (!req.file) return res.status(400).json({ error: "Choose an image, MP4 source video, or narration file." });
       const extension = safeExtension(req.file.originalname);
-      const type = allowedAudioExtensions.has(extension) ? "AUDIO" : "IMAGE";
+      const type = allowedAudioExtensions.has(extension) ? "AUDIO" : allowedVideoExtensions.has(extension) ? "VIDEO" : "IMAGE";
       const projectDir = path.join(storageRoot, project.id);
       await fs.mkdir(projectDir, { recursive: true });
       const storedName = `${crypto.randomUUID()}${extension}`;
@@ -290,6 +292,9 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       // then remove the temporary upload instead of relying on rename().
       await fs.copyFile(tempPath, storagePath);
       await fs.rm(tempPath, { force: true });
+      if (type === "VIDEO") {
+        await execFileAsync(ffprobeCommand, ["-v", "error", "-show_entries", "format=format_name,duration", "-of", "json", storagePath]);
+      }
       const last = await prisma.mediaAsset.findFirst({ where: { projectId: project.id, type }, orderBy: { displayOrder: "desc" } });
       const asset = await prisma.mediaAsset.create({ data: { projectId: project.id, type, filename: req.file.originalname, storagePath, mimeType: req.file.mimetype, size: req.file.size, displayOrder: (last?.displayOrder ?? -1) + 1 } });
       return res.status(201).json({ asset: { ...asset, previewUrl: `/api/v1/media/${asset.id}/preview` } });
