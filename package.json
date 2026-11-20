@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "concurrently \"vite\" \"node server/index.js\"",
     "build": "vite build",
-    "start": "node server/index.js",
+    "start": "npm run db:migrate:deploy && npm run db:seed && npm run start:app",
+    "start:app": "node server/index.js",
     "preview": "vite preview",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name phase1_initial",

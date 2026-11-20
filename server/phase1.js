@@ -285,7 +285,11 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       await fs.mkdir(projectDir, { recursive: true });
       const storedName = `${crypto.randomUUID()}${extension}`;
       const storagePath = ensureContained(storageRoot, path.join(projectDir, storedName));
-      await fs.rename(tempPath, storagePath);
+      // Railway's multer temp directory can be on the container filesystem
+      // while STORAGE_PATH is a mounted volume. Copy across filesystems,
+      // then remove the temporary upload instead of relying on rename().
+      await fs.copyFile(tempPath, storagePath);
+      await fs.rm(tempPath, { force: true });
       const last = await prisma.mediaAsset.findFirst({ where: { projectId: project.id, type }, orderBy: { displayOrder: "desc" } });
       const asset = await prisma.mediaAsset.create({ data: { projectId: project.id, type, filename: req.file.originalname, storagePath, mimeType: req.file.mimetype, size: req.file.size, displayOrder: (last?.displayOrder ?? -1) + 1 } });
       return res.status(201).json({ asset: { ...asset, previewUrl: `/api/v1/media/${asset.id}/preview` } });

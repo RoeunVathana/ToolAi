@@ -4,8 +4,12 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
+const demoPassword = process.env.SEED_DEMO_PASSWORD || "ChangeMe123!";
+const adminEmail = (process.env.SEED_ADMIN_EMAIL || "").trim().toLowerCase();
+const adminPassword = process.env.SEED_ADMIN_PASSWORD || "";
+
 try {
-  const passwordHash = await bcrypt.hash("ChangeMe123!", 12);
+  const passwordHash = await bcrypt.hash(demoPassword, 12);
   await prisma.user.upsert({
     where: { email: "demo@toolaime.local" },
     update: {},
@@ -24,6 +28,19 @@ try {
       },
     },
   });
+
+  if (adminEmail && adminPassword) {
+    const adminPasswordHash = await bcrypt.hash(adminPassword, 12);
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: { name: "ToolAiMe Admin", passwordHash: adminPasswordHash },
+      create: {
+        name: "ToolAiMe Admin",
+        email: adminEmail,
+        passwordHash: adminPasswordHash,
+      },
+    });
+  }
 } finally {
   await prisma.$disconnect();
 }

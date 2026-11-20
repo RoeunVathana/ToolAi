@@ -39,7 +39,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173). Vite serves the dashboard and Express serves the API on `PORT` (default `8787`). `npm start` serves the built dashboard from `dist` and the API from Express.
+Open [http://localhost:5173](http://localhost:5173). Vite serves the dashboard and Express serves the API on `PORT` (default `8787`). `npm start` applies production Prisma migrations, runs the configured seed, then serves the built dashboard from `dist` and the API from Express. Use `npm run start:app` when the database is already migrated and you only want to start the server.
 
 Use the actual credentials for your local PostgreSQL service in `DATABASE_URL`; the example password is a placeholder. Never commit `.env` or provider keys.
 
@@ -63,7 +63,7 @@ npm run test:phase1
 
 ## Environment
 
-See [.env.example](.env.example). Phase 1 uses `DATABASE_URL`, `JWT_ACCESS_SECRET`, `STORAGE_PATH`, FFmpeg overrides, and `GEMINI_API_KEY`/`GEMINI_MODEL` for real Gemini scripts. `JWT_REFRESH_SECRET` is reserved for the refresh-token phase.
+See [.env.example](.env.example). Phase 1 uses `DATABASE_URL`, `JWT_ACCESS_SECRET`, `STORAGE_PATH`, FFmpeg overrides, and `GEMINI_API_KEY`/`GEMINI_MODEL` for real Gemini scripts. Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` to create or update an optional deployment admin test account during startup. This is an account seed, not a separate role system; role-based authorization remains a later phase. `JWT_REFRESH_SECRET` is reserved for the refresh-token phase.
 
 Without Gemini credentials, users can still register, create projects, write/edit Khmer scripts manually, upload media, and render real MP4 files. The API does not fabricate a Gemini response.
 
