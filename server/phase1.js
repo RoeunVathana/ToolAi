@@ -196,6 +196,37 @@ function voiceCatalog() {
   };
 }
 
+function publishingConfig() {
+  const youtubeConfigured = Boolean(process.env.YT_CLIENT_ID && process.env.YT_CLIENT_SECRET && process.env.YT_REDIRECT_URI);
+  const youtubeConnected = Boolean(process.env.YT_REFRESH_TOKEN);
+  const facebookConfigured = Boolean(process.env.FB_APP_ID && process.env.FB_APP_SECRET && process.env.FB_REDIRECT_URI);
+  const facebookConnected = Boolean(process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN);
+  return {
+    timezone: process.env.DEFAULT_TIMEZONE || "Asia/Phnom_Penh",
+    youtube: {
+      configured: youtubeConfigured,
+      connected: youtubeConnected,
+      canPublish: youtubeConfigured && youtubeConnected,
+      label: "YouTube",
+      message: youtubeConfigured && youtubeConnected ? "Credentials are present; provider verification is still required." : "Add YouTube OAuth credentials and a connected channel to publish.",
+    },
+    facebook: {
+      configured: facebookConfigured,
+      connected: facebookConnected,
+      canPublish: facebookConfigured && facebookConnected,
+      label: "Facebook Page",
+      message: facebookConfigured && facebookConnected ? "Page credentials are present; provider verification is still required." : "Add Meta credentials and a Page access token to publish.",
+    },
+  };
+}
+
+function publishJobResponse(job) {
+  return {
+    ...job,
+    project: job.project ? { id: job.project.id, title: job.project.title, status: job.project.status } : undefined,
+  };
+}
+
 function voiceRequestSchema(body, options = {}) {
   const projectId = options.allowProject === false
     ? z.string().uuid().optional().nullable()
@@ -711,6 +742,91 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
   app.get("/api/v1/voice/timelines/:id/download", requireAuth, (req, res) => sendTimelineFile(req, res, "outputPath", "video/mp4", "khmer-timeline.mp4"));
   app.get("/api/v1/voice/timelines/:id/audio", requireAuth, (req, res) => sendTimelineFile(req, res, "audioPath", "audio/wav"));
   app.get("/api/v1/voice/timelines/:id/subtitles", requireAuth, (req, res) => sendTimelineFile(req, res, "subtitlePath", "application/x-subrip"));
+
+  app.get("/api/v1/publishing/config", requireAuth, (_req, res) => {
+    return res.json({ config: publishingConfig() });
+  });
+
+  app.get("/api/v1/publishing/jobs", requireAuth, async (req, res) => {
+    const jobs = await prisma.publishJob.findMany({
+      where: { userId: req.userId },
+      include: { project: true },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+    });
+    return res.json({ jobs: jobs.map(publishJobResponse) });
+  });
+
+  app.post("/api/v1/publishing/jobs", requireAuth, async (req, res) => {
+    try {
+      const input = z.object({
+        projectId: z.string().uuid(),
+        platform: z.enum(["YOUTUBE", "FACEBOOK"]),
+        title: z.string().trim().min(1).max(100),
+        description: z.string().max(5000).default(""),
+        tags: z.string().max(500).default(""),
+        privacyStatus: z.enum(["private", "unlisted", "public"]).default("private"),
+        scheduledAt: z.string().trim().optional().nullable().refine((value) => !value || !Number.isNaN(Date.parse(value)), "Use a valid schedule date."),
+        timezone: z.string().trim().min(1).max(80).default("Asia/Phnom_Penh"),
+        rightsVerified: z.literal(true, "Confirm that you have permission to publish this video."),
+      }).parse(req.body || {});
+      const project = await prisma.videoProject.findFirst({
+        where: { id: input.projectId, userId: req.userId },
+        include: { renderJobs: { orderBy: { createdAt: "desc" }, take: 1 } },
+      });
+      if (!project) return res.status(404).json({ error: "Project not found." });
+      const latestRender = project.renderJobs[0];
+      if (!latestRender || latestRender.status !== "COMPLETED" || !latestRender.outputPath || !fsSync.existsSync(ensureContained(storageRoot, latestRender.outputPath))) {
+        return res.status(409).json({ error: "Only a completed rendered MP4 can be added to the publishing queue.", code: "RENDER_REQUIRED" });
+      }
+      const job = await prisma.publishJob.create({
+        data: {
+          userId: req.userId,
+          projectId: project.id,
+          platform: input.platform,
+          status: "PENDING_APPROVAL",
+          title: input.title,
+          description: input.description,
+          tags: input.tags || null,
+          privacyStatus: input.privacyStatus,
+          scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null,
+          timezone: input.timezone,
+          rightsVerified: true,
+        },
+        include: { project: true },
+      });
+      return res.status(201).json({ job: publishJobResponse(job) });
+    } catch (error) {
+      const status = error?.name === "ZodError" ? 400 : 500;
+      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : "Publishing draft could not be created." });
+    }
+  });
+
+  app.post("/api/v1/publishing/jobs/:id/approve", requireAuth, async (req, res) => {
+    const job = await prisma.publishJob.findFirst({ where: { id: req.params.id, userId: req.userId }, include: { project: true } });
+    if (!job) return res.status(404).json({ error: "Publishing draft not found." });
+    if (!job.rightsVerified) return res.status(409).json({ error: "Rights confirmation is required before approval." });
+    if (job.status !== "PENDING_APPROVAL") return res.status(409).json({ error: `This draft is already ${job.status.toLowerCase().replaceAll("_", " ")}.` });
+    const updated = await prisma.publishJob.update({ where: { id: job.id }, data: { status: job.scheduledAt ? "SCHEDULED" : "APPROVED", approvedAt: new Date() }, include: { project: true } });
+    return res.json({ job: publishJobResponse(updated) });
+  });
+
+  app.post("/api/v1/publishing/jobs/:id/cancel", requireAuth, async (req, res) => {
+    const job = await prisma.publishJob.findFirst({ where: { id: req.params.id, userId: req.userId }, include: { project: true } });
+    if (!job) return res.status(404).json({ error: "Publishing draft not found." });
+    if (["PUBLISHED", "CANCELLED"].includes(job.status)) return res.status(409).json({ error: `This draft is already ${job.status.toLowerCase()}.` });
+    const updated = await prisma.publishJob.update({ where: { id: job.id }, data: { status: "CANCELLED" }, include: { project: true } });
+    return res.json({ job: publishJobResponse(updated) });
+  });
+
+  app.post("/api/v1/publishing/jobs/:id/publish", requireAuth, async (req, res) => {
+    const job = await prisma.publishJob.findFirst({ where: { id: req.params.id, userId: req.userId }, include: { project: true } });
+    if (!job) return res.status(404).json({ error: "Publishing draft not found." });
+    if (!["APPROVED", "SCHEDULED"].includes(job.status)) return res.status(409).json({ error: "Approve this draft before attempting publication." });
+    const provider = job.platform === "YOUTUBE" ? publishingConfig().youtube : publishingConfig().facebook;
+    if (!provider.canPublish) return res.status(409).json({ error: `${provider.label} is not configured for this server. Connect the official provider first; the draft remains approved.`, code: "PUBLISHING_NOT_CONFIGURED" });
+    return res.status(501).json({ error: `${provider.label} credentials are present, but the provider upload adapter is not verified in this deployment. No publication was attempted.`, code: "PUBLISHING_ADAPTER_NOT_VERIFIED" });
+  });
 
   app.post("/api/v1/projects/:id/media", requireAuth, upload.single("file"), async (req, res) => {
     const tempPath = req.file?.path;

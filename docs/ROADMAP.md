@@ -61,11 +61,13 @@ Acceptance: Page OAuth, Page selection, confirmed Page video/Reel publishing, pe
 
 ## Phase 6 — Auto publishing
 
-Status: `TODO`.
+Status: `IN_PROGRESS` — the Auto Publisher approval center is available now.
 
-Dependency: YouTube and Facebook connections.
+Dependency: approved render artifacts and future YouTube/Facebook connections.
 
-Acceptance: approval gate, timezone-aware scheduling, Redis/BullMQ retries, duplicate prevention, logs, cancel/retry, and publication verification.
+Available now: completed-render selection, platform metadata drafts, rights confirmation, approval gate, cancellation, timezone-aware schedule drafts, and truthful “not configured” provider states.
+
+Remaining acceptance: official YouTube and Meta Page connections, Redis/BullMQ retries, duplicate prevention, job logs, manual retry, cancel scheduled jobs, provider-confirmed publication URLs, and verified publication status.
 
 ## Phase 7 — Advanced tools and management
 
