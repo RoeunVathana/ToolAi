@@ -36,10 +36,10 @@ The detailed mapping is in [docs/CHATGPT_SCRIPT_ALIGNMENT.md](CHATGPT_SCRIPT_ALI
 - `node --check server/index.js` — PASS.
 - `npx prisma validate` with `DATABASE_URL` — PASS.
 - Prisma migration + seed on isolated PostgreSQL 18 — PASS.
-- `npm run test:phase1` — PASS: auth, ownership, missing Gemini configuration, upload validation, FFmpeg render, preview, download, and FFprobe verification.
+- `npm run test:phase1` — PASS against Railway with `EXPECT_LIVE_GEMINI=1`: auth, ownership, live Gemini Khmer script, upload validation, FFmpeg render, preview, download, FFprobe verification, publishing queue, approval, truthful provider-blocked publish, cancellation, and cleanup. Without `EXPECT_LIVE_GEMINI=1`, the same test expects the honest 503 configuration state.
 - Remote Railway smoke test — PASS: admin login, `/me`, project create/edit, image upload, audio upload, render, inline MP4 preview, download, and FFprobe verification. The temporary project was deleted after the test.
 - Remote MP4 upload — PASS: generated one-second MP4 accepted as `VIDEO`, stored on Railway volume, and returned as an authorized `video/mp4` preview; temporary project deleted.
-- Auto Publisher API smoke coverage — `GET /api/v1/publishing/config` and `GET /api/v1/publishing/jobs` are covered in `tests/phase1.test.js`; full queue approval and provider publication remain configuration-dependent.
+- Auto Publisher API smoke coverage — `GET /api/v1/publishing/config` and `GET /api/v1/publishing/jobs` are covered in `tests/phase1.test.js`; the Railway run also created, approved, attempted, and cancelled a real queue draft. External provider publication remains configuration-dependent.
 - Live Gemini connectivity — PASS: new Free-tier key generated in Google AI Studio, configured only in Railway secrets, and verified through the live Khmer script endpoint.
 - Railway deployment — PASS: PostgreSQL service attached, JWT/database variables configured, migrations and optional admin seed run at startup.
 
