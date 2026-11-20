@@ -17,11 +17,11 @@ Foundation checklist from the script:
 
 ## Phase 2 — AI Script and Khmer Voice
 
-Status: `IN_PROGRESS` (similar voice slice implemented; provider-gated verification remains).
+Status: `IN_PROGRESS` (Khmer AI Voice Studio is active; provider-gated verification remains).
 
 Dependency: Phase 1 foundation and provider configuration.
 
-Acceptance: provider-backed script/translation/TTS abstractions, similar voice generation only after ownership consent, only real supported Khmer voices, preview/download, speed controls, paragraph regeneration, narration history, and recorded-audio fallback.
+Acceptance: provider-backed script/translation/TTS abstractions, active Khmer narration studio, only real supported Gemini voices, preview/download, speed controls, paragraph regeneration, narration history, optional project attachment, recorded-audio fallback, and similar voice generation only after ownership consent.
 
 ## Phase 3 — Video Generator
 

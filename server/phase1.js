@@ -18,11 +18,23 @@ const accessTokenTtl = process.env.JWT_ACCESS_TTL || "2h";
 const allowedImageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const allowedAudioExtensions = new Set([".mp3", ".wav"]);
 const allowedVideoExtensions = new Set([".mp4"]);
+const supportedTtsVoices = [
+  { id: "Kore", label: "Kore", description: "Clear and balanced" },
+  { id: "Puck", label: "Puck", description: "Bright and friendly" },
+  { id: "Charon", label: "Charon", description: "Deep and steady" },
+  { id: "Aoede", label: "Aoede", description: "Warm and expressive" },
+  { id: "Leda", label: "Leda", description: "Soft and calm" },
+  { id: "Orus", label: "Orus", description: "Confident and clear" },
+  { id: "Fenrir", label: "Fenrir", description: "Strong and dramatic" },
+  { id: "Zephyr", label: "Zephyr", description: "Gentle and natural" },
+  { id: "Rasalgethi", label: "Rasalgethi", description: "Narration-focused" },
+];
 
 function phase1Paths(rootDir) {
   const storageRoot = path.resolve(process.env.STORAGE_PATH || path.join(rootDir, "storage"), "phase1");
   const incomingRoot = path.join(rootDir, "server", "incoming", "phase1");
-  return { storageRoot, incomingRoot };
+  const voiceRoot = path.join(storageRoot, "voices");
+  return { storageRoot, incomingRoot, voiceRoot };
 }
 
 function publicUser(user) {
@@ -170,6 +182,77 @@ async function generateReplicatedVoiceover({ script, sourceAudioPath, consentAud
   }
 }
 
+function voiceCatalog() {
+  return {
+    provider: "gemini",
+    model: process.env.GEMINI_TTS_MODEL || "gemini-3.8-flash-tts",
+    configured: Boolean(process.env.GEMINI_API_KEY),
+    language: "km",
+    voices: supportedTtsVoices,
+  };
+}
+
+function voiceRequestSchema(body, options = {}) {
+  const projectId = options.allowProject === false
+    ? z.string().uuid().optional().nullable()
+    : z.string().uuid().optional().nullable();
+  return z.object({
+    script: z.string().trim().min(1, "Write a Khmer script before generating audio.").max(30000),
+    title: z.string().trim().min(1).max(120).default("Khmer narration"),
+    voice: z.string().trim().min(1).default("Kore").refine((value) => supportedTtsVoices.some((item) => item.id === value), "Choose a supported Gemini voice."),
+    speed: z.coerce.number().min(0.75, "Speed must be at least 0.75x.").max(1.5, "Speed cannot exceed 1.5x.").default(1),
+    projectId,
+  }).parse(body || {});
+}
+
+async function generateStandardVoiceover({ script, voice, speed, ffmpegCommand, tempDir }) {
+  if (!process.env.GEMINI_API_KEY) {
+    const error = new Error("Gemini TTS is not configured. You can upload a recorded narration instead.");
+    error.code = "GEMINI_NOT_CONFIGURED";
+    error.status = 503;
+    throw error;
+  }
+  const model = process.env.GEMINI_TTS_MODEL || "gemini-3.8-flash-tts";
+  const rawPath = path.join(tempDir, `${crypto.randomUUID()}-tts-raw.wav`);
+  const finalPath = path.join(tempDir, `${crypto.randomUUID()}-tts-final.wav`);
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { apiVersion: process.env.GEMINI_API_VERSION || "v1beta" } });
+    const interaction = await ai.interactions.create({
+      model,
+      input: [{
+        type: "user_input",
+        content: [{
+          type: "text",
+          text: script.slice(0, 30000),
+          annotations: [{ type: "speech_metadata", style: "natural Khmer narration, warm, clear pronunciation, conversational pacing" }],
+        }],
+      }],
+      response_format: { type: "audio" },
+      generation_config: { speech_config: [{ voice }] },
+      store: false,
+    });
+    const audioData = interactionAudioData(interaction);
+    if (!audioData) throw new Error("Gemini did not return generated voice audio.");
+    await fs.writeFile(rawPath, Buffer.from(audioData, "base64"));
+    if (speed === 1) await fs.copyFile(rawPath, finalPath);
+    else await execFileAsync(ffmpegCommand, ["-y", "-i", rawPath, "-filter:a", `atempo=${speed}`, "-ar", "24000", "-ac", "1", finalPath]);
+    const audio = await fs.readFile(finalPath);
+    return { audio, model, provider: "gemini", speed };
+  } finally {
+    await fs.rm(rawPath, { force: true }).catch(() => {});
+    await fs.rm(finalPath, { force: true }).catch(() => {});
+  }
+}
+
+function narrationResponse(narration, storageRoot, includeScript = false) {
+  return {
+    ...narration,
+    ...(includeScript ? {} : { script: undefined }),
+    previewUrl: `/api/v1/voice/narrations/${narration.id}/preview`,
+    downloadUrl: `/api/v1/voice/narrations/${narration.id}/download`,
+  };
+}
+
 function ensureContained(root, candidate) {
   const resolvedRoot = path.resolve(root);
   const resolvedCandidate = path.resolve(candidate);
@@ -232,9 +315,10 @@ async function renderProject({ jobId, project, images, audio, outputPath, ffmpeg
 }
 
 export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeCommand }) {
-  const { storageRoot, incomingRoot } = phase1Paths(rootDir);
+  const { storageRoot, incomingRoot, voiceRoot } = phase1Paths(rootDir);
   fsSync.mkdirSync(storageRoot, { recursive: true });
   fsSync.mkdirSync(incomingRoot, { recursive: true });
+  fsSync.mkdirSync(voiceRoot, { recursive: true });
   const upload = multer({
     dest: incomingRoot,
     limits: { fileSize: 80 * 1024 * 1024 },
@@ -261,6 +345,47 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       where: { id: projectId, userId },
       include: includeMedia ? { mediaAssets: { orderBy: [{ type: "asc" }, { displayOrder: "asc" }, { createdAt: "asc" }] }, renderJobs: { orderBy: { createdAt: "desc" }, take: 5 } } : undefined,
     });
+  }
+
+  async function persistNarration({ userId, input, audio, provider, model, mode, durationSeconds }) {
+    const userVoiceRoot = path.join(voiceRoot, userId);
+    await fs.mkdir(userVoiceRoot, { recursive: true });
+    const filename = `${crypto.randomUUID()}.wav`;
+    const storagePath = ensureContained(storageRoot, path.join(userVoiceRoot, filename));
+    await fs.writeFile(storagePath, audio);
+    try {
+      const narration = await prisma.voiceNarration.create({
+        data: {
+          userId,
+          projectId: input.projectId || null,
+          title: input.title,
+          script: input.script,
+          voice: input.voice,
+          speed: input.speed,
+          provider,
+          model,
+          mode,
+          status: "COMPLETED",
+          storagePath,
+          mimeType: "audio/wav",
+          size: audio.length,
+          durationSeconds,
+        },
+      });
+      let asset = null;
+      if (input.projectId) {
+        const project = await ownedProject(input.projectId, userId);
+        if (!project) throw new Error("Project not found.");
+        const last = await prisma.mediaAsset.findFirst({ where: { projectId: project.id, type: "AUDIO" }, orderBy: { displayOrder: "desc" } });
+        asset = await prisma.mediaAsset.create({
+          data: { projectId: project.id, type: "AUDIO", filename: `${input.title}.wav`, storagePath, mimeType: "audio/wav", size: audio.length, displayOrder: (last?.displayOrder ?? -1) + 1 },
+        });
+      }
+      return { narration: narrationResponse(narration, storageRoot, true), asset: asset ? { ...asset, previewUrl: `/api/v1/media/${asset.id}/preview` } : null };
+    } catch (error) {
+      await fs.rm(storagePath, { force: true }).catch(() => {});
+      throw error;
+    }
   }
 
   app.post("/api/v1/auth/register", async (req, res) => {
@@ -377,6 +502,94 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     } finally {
       await Promise.all(tempPaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => {})));
     }
+  });
+
+  app.get("/api/v1/voice/catalog", requireAuth, (_req, res) => {
+    return res.json(voiceCatalog());
+  });
+
+  app.get("/api/v1/voice/narrations", requireAuth, async (req, res) => {
+    const narrations = await prisma.voiceNarration.findMany({ where: { userId: req.userId }, orderBy: { createdAt: "desc" }, take: 50 });
+    return res.json({ narrations: narrations.map((item) => narrationResponse(item, storageRoot)) });
+  });
+
+  app.post("/api/v1/voice/narrations", requireAuth, async (req, res) => {
+    try {
+      const input = voiceRequestSchema(req.body);
+      if (input.projectId && !(await ownedProject(input.projectId, req.userId))) return res.status(404).json({ error: "Project not found." });
+      const generated = await generateStandardVoiceover({ script: input.script, voice: input.voice, speed: input.speed, ffmpegCommand, tempDir: incomingRoot });
+      const durationSeconds = await (async () => {
+        const temporaryPath = path.join(incomingRoot, `${crypto.randomUUID()}-duration.wav`);
+        try { await fs.writeFile(temporaryPath, generated.audio); return await probeDuration(ffprobeCommand, temporaryPath); }
+        finally { await fs.rm(temporaryPath, { force: true }).catch(() => {}); }
+      })();
+      const saved = await persistNarration({ userId: req.userId, input, audio: generated.audio, provider: generated.provider, model: generated.model, mode: "TTS", durationSeconds });
+      return res.status(201).json({ ...saved, status: "completed" });
+    } catch (error) {
+      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
+      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Khmer narration generation failed.", code: error?.code || "VOICE_GENERATION_ERROR" });
+    }
+  });
+
+  app.post("/api/v1/voice/narrations/:id/regenerate-paragraph", requireAuth, async (req, res) => {
+    try {
+      const parent = await prisma.voiceNarration.findFirst({ where: { id: req.params.id, userId: req.userId } });
+      if (!parent) return res.status(404).json({ error: "Narration not found." });
+      const paragraphs = parent.script.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean);
+      const paragraphIndex = z.coerce.number().int().min(0).max(Math.max(0, paragraphs.length - 1)).parse(req.body?.paragraphIndex);
+      const input = voiceRequestSchema({
+        script: paragraphs[paragraphIndex],
+        title: `${parent.title} · paragraph ${paragraphIndex + 1}`,
+        voice: req.body?.voice || parent.voice,
+        speed: req.body?.speed ?? parent.speed,
+        projectId: parent.projectId,
+      });
+      const generated = await generateStandardVoiceover({ script: input.script, voice: input.voice, speed: input.speed, ffmpegCommand, tempDir: incomingRoot });
+      const durationPath = path.join(incomingRoot, `${crypto.randomUUID()}-duration.wav`);
+      let durationSeconds;
+      try { await fs.writeFile(durationPath, generated.audio); durationSeconds = await probeDuration(ffprobeCommand, durationPath); }
+      finally { await fs.rm(durationPath, { force: true }).catch(() => {}); }
+      const saved = await persistNarration({ userId: req.userId, input, audio: generated.audio, provider: generated.provider, model: generated.model, mode: "PARAGRAPH", durationSeconds });
+      return res.status(201).json({ ...saved, paragraphIndex, status: "completed" });
+    } catch (error) {
+      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
+      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Paragraph regeneration failed.", code: error?.code || "VOICE_GENERATION_ERROR" });
+    }
+  });
+
+  app.post("/api/v1/voice/upload", requireAuth, voiceUpload.single("file"), async (req, res) => {
+    const tempPath = req.file?.path;
+    try {
+      if (!req.file) return res.status(400).json({ error: "Choose an MP3 or WAV narration file." });
+      const projectId = req.body?.projectId ? z.string().uuid().parse(req.body.projectId) : null;
+      if (projectId && !(await ownedProject(projectId, req.userId))) return res.status(404).json({ error: "Project not found." });
+      const input = { script: String(req.body?.script || "Recorded narration"), title: String(req.body?.title || req.file.originalname.replace(/\.[^.]+$/, "")).trim().slice(0, 120) || "Recorded narration", voice: "uploaded", speed: 1, projectId };
+      const audio = await fs.readFile(tempPath);
+      const durationSeconds = await probeDuration(ffprobeCommand, tempPath);
+      const saved = await persistNarration({ userId: req.userId, input, audio, provider: "manual-upload", model: null, mode: "UPLOAD", durationSeconds });
+      return res.status(201).json({ ...saved, status: "completed" });
+    } catch (error) {
+      return res.status(error?.name === "ZodError" ? 400 : 500).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Recorded narration upload failed." });
+    } finally {
+      if (tempPath) await fs.rm(tempPath, { force: true }).catch(() => {});
+    }
+  });
+
+  app.get("/api/v1/voice/narrations/:id/preview", requireAuth, async (req, res) => {
+    const narration = await prisma.voiceNarration.findFirst({ where: { id: req.params.id, userId: req.userId } });
+    if (!narration) return res.status(404).json({ error: "Narration not found." });
+    const filePath = ensureContained(storageRoot, narration.storagePath);
+    if (!fsSync.existsSync(filePath)) return res.status(404).json({ error: "Narration file is missing from local storage." });
+    res.type(narration.mimeType);
+    return res.sendFile(filePath);
+  });
+
+  app.get("/api/v1/voice/narrations/:id/download", requireAuth, async (req, res) => {
+    const narration = await prisma.voiceNarration.findFirst({ where: { id: req.params.id, userId: req.userId } });
+    if (!narration) return res.status(404).json({ error: "Narration not found." });
+    const filePath = ensureContained(storageRoot, narration.storagePath);
+    if (!fsSync.existsSync(filePath)) return res.status(404).json({ error: "Narration file is missing from local storage." });
+    return res.download(filePath, `${narration.title.replace(/[^a-z0-9\u1780-\u17ff]+/gi, "-") || "khmer-narration"}.wav`);
   });
 
   app.post("/api/v1/projects/:id/media", requireAuth, upload.single("file"), async (req, res) => {

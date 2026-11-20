@@ -41,14 +41,17 @@ The detailed mapping is in [docs/CHATGPT_SCRIPT_ALIGNMENT.md](CHATGPT_SCRIPT_ALI
 - Live Gemini connectivity — PASS: new Free-tier key generated in Google AI Studio, configured only in Railway secrets, and verified through the live Khmer script endpoint.
 - Railway deployment — PASS: PostgreSQL service attached, JWT/database variables configured, migrations and optional admin seed run at startup.
 
-## Phase 2 start — similar Khmer voice
+## Phase 2 — Khmer AI Voice Studio
 
 | Area | Status | Implemented files | Verification | Known limitations |
 | --- | --- | --- | --- | --- |
-| Similar voice narration | IN_PROGRESS | `server/phase1.js`, `src/main.jsx`, `src/styles.css` | Build and syntax checks pass; missing-input API validation is covered in `tests/phase1.test.js` | Live generation requires Gemini 3.8 Flash TTS voice replication access, an authentic 10–30 second sample, a 2–30 second same-speaker consent recording, and a supported paid-tier Gemini project; no voice was fabricated for testing |
+| Standard Khmer TTS studio | IN_PROGRESS | `server/phase1.js`, `src/main.jsx`, `src/styles.css`, `prisma/schema.prisma`, `prisma/migrations/20261121043000_voice_narrations/migration.sql` | Production build, Prisma client generation, and server syntax checks pass; provider call remains configuration-gated | Live audio generation still requires a configured Gemini TTS model; no fake audio is returned |
+| Narration history and controls | DONE | `server/phase1.js`, `src/main.jsx`, `prisma/schema.prisma` | API/UI paths implemented for preview, download, speed, paragraph regeneration, project attachment, and history | Long scripts may be better split into paragraphs to keep voice consistency |
+| Recorded narration fallback | DONE | `server/phase1.js`, `src/main.jsx` | MP3/WAV upload validation and storage reuse the authenticated local storage path | Provider-independent upload does not synthesize or alter the recording |
+| Similar voice narration | IN_PROGRESS | `server/phase1.js`, `src/main.jsx`, `src/styles.css` | Consent-gated endpoint and UI remain available in the video wizard | Live generation requires voice replication access, authentic recordings, and provider account eligibility; no voice was fabricated for testing |
 
 The implementation uses Gemini's stateless voice replication mode (`store: false`) and does not persist a voice profile. Generated WAV narration is saved as the project's newest audio asset so the existing FFmpeg render workflow can use it.
 
-## Phase 2 gate
+## Phase 2 verification note
 
-Phase 2 has not started. It should begin only after the user supplies a valid database URL for normal local use and, if live AI generation is required, a newly created/revoked-safe Gemini key in `.env`.
+The Khmer AI Voice page is now active and deployable. Provider-backed generation is intentionally reported as unavailable when `GEMINI_API_KEY` or the configured TTS model is missing; recorded MP3/WAV narration remains usable in that state. The existing Phase 1 render workflow can consume generated or uploaded narration assets.

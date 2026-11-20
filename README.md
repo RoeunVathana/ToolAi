@@ -4,14 +4,14 @@ ToolAiMe is a local-first AI video workspace. Phase 1 implements:
 
 `Register/Login → Create Project → Generate or edit Khmer script → Upload images and narration → FFmpeg MP4 render → Preview → Download`
 
-The existing Gemini scene-generation and social-publishing code remains available, while the new `/api/v1` routes and dashboard focus on this MVP. Later modules are shown as explicit planned states.
+The existing Gemini scene-generation and social-publishing code remains available, while the new `/api/v1` routes and dashboard focus on the verified local workflow. Khmer AI Voice is now an active narration studio; later modules remain explicit planned states.
 
 ## Requirements
 
 - Node.js 20+
 - PostgreSQL 14+
 - FFmpeg and FFprobe (bundled through `ffmpeg-static` and `ffprobe-static` by default)
-- A Gemini API key only for live script generation
+- A Gemini API key for live script and Khmer TTS generation (recorded MP3/WAV upload works without it)
 
 ## Local setup
 
@@ -96,6 +96,8 @@ Without Gemini credentials, users can still register, create projects, write/edi
 - Projects: `GET/POST /api/v1/projects`, `GET/PATCH/DELETE /api/v1/projects/:id`
 - Gemini: `POST /api/v1/gemini/generate-script`
 - Similar voice narration: `POST /api/v1/projects/:id/voice/generate`; requires a 10–30 second MP3/WAV reference sample, a 2–30 second consent recording, and explicit ownership confirmation. It uses a one-off Gemini replicated voice profile and saves the generated WAV as the project narration asset.
+- Khmer AI Voice: `GET /api/v1/voice/catalog`, `GET /api/v1/voice/narrations`, `POST /api/v1/voice/narrations`, `POST /api/v1/voice/narrations/:id/regenerate-paragraph`, and `POST /api/v1/voice/upload`. The studio supports Khmer script input, supported Gemini voices, 0.75×–1.50× speed, preview, WAV download, paragraph regeneration, narration history, optional project attachment, and recorded-audio fallback.
+- Voice files: `GET /api/v1/voice/narrations/:id/preview` and `GET /api/v1/voice/narrations/:id/download`; all voice routes are JWT-protected and user-scoped.
 - Media: `POST /api/v1/projects/:id/media`, `GET /api/v1/projects/:id/media`, `PATCH/DELETE /api/v1/media/:id`, `GET /api/v1/media/:id/preview`; accepts JPG, PNG, WebP, MP4, MP3, and WAV. MP4 files are stored and previewable as source assets; Phase 1 rendering still uses image assets plus narration.
 - Rendering: `POST /api/v1/projects/:id/render`, `GET /api/v1/render-jobs/:id`, `GET /api/v1/render-jobs/:id/download`
 

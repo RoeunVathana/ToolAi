@@ -33,6 +33,10 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   const me = await request("/api/v1/auth/me", {}, ownerToken);
   assert.equal(me.response.status, 200);
   assert.equal(me.data.user.email, ownerEmail);
+  const voiceCatalog = await request("/api/v1/voice/catalog", {}, ownerToken);
+  assert.equal(voiceCatalog.response.status, 200);
+  assert.equal(voiceCatalog.data.language, "km");
+  assert.ok(voiceCatalog.data.voices.some((voice) => voice.id === "Kore"));
 
   const login = await request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email: ownerEmail, password: "PhaseOne123!" }) });
   assert.equal(login.response.status, 200);
