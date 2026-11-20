@@ -112,8 +112,13 @@ function VoiceStudio({ onBack }) {
   const selectedParagraphs = selectedNarration?.script?.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean) || [];
   function setField(field, value) { setForm((current) => ({ ...current, [field]: value })); }
   async function load() {
-    try { const [voiceData, historyData, projectData] = await Promise.all([api("/api/v1/voice/catalog", {}, token), api("/api/v1/voice/narrations", {}, token), api("/api/v1/projects", {}, token)]); setCatalog(voiceData); setNarrations(historyData.narrations || []); setProjects(projectData.projects || []); }
-    catch (loadError) { setError(loadError.message); }
+    const results = await Promise.allSettled([api("/api/v1/voice/catalog", {}, token), api("/api/v1/voice/narrations", {}, token), api("/api/v1/projects", {}, token)]);
+    const [voiceResult, historyResult, projectResult] = results;
+    if (voiceResult.status === "fulfilled") setCatalog(voiceResult.value);
+    if (historyResult.status === "fulfilled") setNarrations(historyResult.value.narrations || []);
+    if (projectResult.status === "fulfilled") setProjects(projectResult.value.projects || []);
+    const criticalFailure = voiceResult.status === "rejected" && projectResult.status === "rejected";
+    if (criticalFailure) setError(voiceResult.reason?.message || "Voice studio could not load. Try again.");
   }
   useEffect(() => { load(); }, []);
   async function generate() {
@@ -140,7 +145,15 @@ function TimelineVoice({ onBack }) {
   const token = localStorage.getItem("toolaime-token") || "";
   const [catalog, setCatalog] = useState(null); const [projects, setProjects] = useState([]); const [timelines, setTimelines] = useState([]);
   const [title, setTitle] = useState("Khmer story recap timeline"); const [voice, setVoice] = useState("Kore"); const [projectId, setProjectId] = useState(""); const [videoFile, setVideoFile] = useState(null); const [audioFile, setAudioFile] = useState(null); const [srt, setSrt] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [timeline, setTimeline] = useState(null);
-  useEffect(() => { Promise.all([api("/api/v1/voice/catalog", {}, token), api("/api/v1/projects", {}, token), api("/api/v1/voice/timelines", {}, token)]).then(([voiceData, projectData, timelineData]) => { setCatalog(voiceData); setProjects(projectData.projects || []); setTimelines(timelineData.timelines || []); }).catch((loadError) => setError(loadError.message)); }, []);
+  async function loadTimelineData() {
+    const results = await Promise.allSettled([api("/api/v1/voice/catalog", {}, token), api("/api/v1/projects", {}, token), api("/api/v1/voice/timelines", {}, token)]);
+    const [voiceResult, projectResult, timelineResult] = results;
+    if (voiceResult.status === "fulfilled") setCatalog(voiceResult.value);
+    if (projectResult.status === "fulfilled") setProjects(projectResult.value.projects || []);
+    if (timelineResult.status === "fulfilled") setTimelines(timelineResult.value.timelines || []);
+    if (voiceResult.status === "rejected" && projectResult.status === "rejected") setError(voiceResult.reason?.message || "Timeline studio could not load. Try again.");
+  }
+  useEffect(() => { loadTimelineData(); }, []);
   async function exportTimeline() {
     setError(""); if (!videoFile) { setError("Choose an MP4 video first."); return; } if (!srt.trim() && !audioFile) { setError("Paste an SRT subtitle or upload an MP3/WAV narration."); return; }
     setBusy(true); try { const form = new FormData(); form.append("video", videoFile); form.append("title", title); form.append("voice", voice); form.append("srt", srt); if (audioFile) form.append("audio", audioFile); if (projectId) form.append("projectId", projectId); const data = await api("/api/v1/voice/timelines", { method: "POST", body: form }, token); setTimeline(data.timeline); setTimelines((current) => [data.timeline, ...current]); } catch (timelineError) { setError(timelineError.message); } finally { setBusy(false); }
