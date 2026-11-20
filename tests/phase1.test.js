@@ -37,6 +37,12 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   assert.equal(voiceCatalog.response.status, 200);
   assert.equal(voiceCatalog.data.language, "km");
   assert.ok(voiceCatalog.data.voices.some((voice) => voice.id === "Kore"));
+  const voiceTimelines = await request("/api/v1/voice/timelines", {}, ownerToken);
+  assert.equal(voiceTimelines.response.status, 200);
+  const missingTimelineVideo = new FormData();
+  missingTimelineVideo.append("srt", "1\n00:00:00,000 --> 00:00:01,000\nសំឡេងសាកល្បង");
+  const timelineValidation = await request("/api/v1/voice/timelines", { method: "POST", body: missingTimelineVideo }, ownerToken);
+  assert.equal(timelineValidation.response.status, 400);
 
   const login = await request("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email: ownerEmail, password: "PhaseOne123!" }) });
   assert.equal(login.response.status, 200);

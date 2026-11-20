@@ -248,6 +248,22 @@ async function generateStandardVoiceover({ script, voice, speed, ffmpegCommand, 
   }
 }
 
+function srtToText(srt) {
+  return String(srt || "").replace(/\r/g, "").split(/\n\s*\n/).map((block) => block.split("\n").filter((line) => line.trim() && !/^\d+$/.test(line.trim()) && !/-->/.test(line)).join(" ").trim()).filter(Boolean).join("\n\n").slice(0, 30000);
+}
+
+function subtitleFilterPath(filePath) {
+  return filePath.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+}
+
+async function burnTimelineSubtitles({ inputPath, subtitlePath, outputPath, ffmpegCommand }) {
+  await execFileAsync(ffmpegCommand, [
+    "-y", "-i", inputPath,
+    "-vf", `subtitles='${subtitleFilterPath(subtitlePath)}':force_style='FontName=Arial,FontSize=20,Outline=2,Shadow=1,Alignment=2'`,
+    "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outputPath,
+  ], { maxBuffer: 1024 * 1024 * 4 });
+}
+
 function narrationResponse(narration, storageRoot, includeScript = false) {
   return {
     ...narration,
@@ -343,6 +359,16 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       callback(valid ? null : new Error("Voice samples must be MP3 or WAV files."), valid);
     },
   });
+  const timelineUpload = multer({
+    dest: incomingRoot,
+    limits: { fileSize: 500 * 1024 * 1024 },
+    fileFilter: (_req, file, callback) => {
+      const extension = safeExtension(file.originalname);
+      const validVideo = (file.mimetype === "video/mp4" || extension === ".mp4") && allowedVideoExtensions.has(extension);
+      const validAudio = file.mimetype.startsWith("audio/") && allowedAudioExtensions.has(extension);
+      callback(validVideo || validAudio ? null : new Error("Timeline input must be an MP4 video or MP3/WAV narration."), validVideo || validAudio);
+    },
+  });
 
   async function ownedProject(projectId, userId, includeMedia = false) {
     return prisma.videoProject.findFirst({
@@ -390,6 +416,16 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       await fs.rm(storagePath, { force: true }).catch(() => {});
       throw error;
     }
+  }
+
+  function timelineResponse(timeline) {
+    return {
+      ...timeline,
+      videoUrl: timeline.outputPath ? `/api/v1/voice/timelines/${timeline.id}/video` : null,
+      downloadUrl: timeline.outputPath ? `/api/v1/voice/timelines/${timeline.id}/download` : null,
+      subtitleUrl: timeline.subtitlePath ? `/api/v1/voice/timelines/${timeline.id}/subtitles` : null,
+      audioUrl: timeline.audioPath ? `/api/v1/voice/timelines/${timeline.id}/audio` : null,
+    };
   }
 
   app.post("/api/v1/auth/register", async (req, res) => {
@@ -595,6 +631,86 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     if (!fsSync.existsSync(filePath)) return res.status(404).json({ error: "Narration file is missing from local storage." });
     return res.download(filePath, `${narration.title.replace(/[^a-z0-9\u1780-\u17ff]+/gi, "-") || "khmer-narration"}.wav`);
   });
+
+  app.get("/api/v1/voice/timelines", requireAuth, async (req, res) => {
+    const timelines = await prisma.voiceTimeline.findMany({ where: { userId: req.userId }, orderBy: { createdAt: "desc" }, take: 30 });
+    return res.json({ timelines: timelines.map(timelineResponse) });
+  });
+
+  app.post("/api/v1/voice/timelines", requireAuth, timelineUpload.fields([{ name: "video", maxCount: 1 }, { name: "audio", maxCount: 1 }]), async (req, res) => {
+    const files = req.files || {};
+    const videoFile = files.video?.[0];
+    const audioFile = files.audio?.[0];
+    const cleanupPaths = [videoFile?.path, audioFile?.path].filter(Boolean);
+    let timelineDir = null;
+    try {
+      if (!videoFile) return res.status(400).json({ error: "Choose an MP4 video for the timeline." });
+      const body = z.object({
+        title: z.string().trim().min(1).max(120).default("Khmer timeline voice"),
+        voice: z.string().trim().min(1).default("Kore").refine((value) => supportedTtsVoices.some((item) => item.id === value), "Choose a supported Gemini voice."),
+        srt: z.string().max(500000).default(""),
+        script: z.string().trim().max(30000).default(""),
+        projectId: z.string().uuid().optional().nullable(),
+      }).parse(req.body || {});
+      if (body.projectId && !(await ownedProject(body.projectId, req.userId))) return res.status(404).json({ error: "Project not found." });
+      const subtitleText = srtToText(body.srt);
+      const script = body.script || subtitleText;
+      if (!audioFile && !script) return res.status(400).json({ error: "Paste an SRT/script or upload an MP3/WAV narration." });
+      const durationSeconds = await probeDuration(ffprobeCommand, videoFile.path);
+      const id = crypto.randomUUID();
+      timelineDir = ensureContained(voiceRoot, path.join(voiceRoot, req.userId, "timelines", id));
+      await fs.mkdir(timelineDir, { recursive: true });
+      const sourcePath = ensureContained(storageRoot, path.join(timelineDir, "source.mp4"));
+      await fs.copyFile(videoFile.path, sourcePath);
+      let subtitlePath = null;
+      if (body.srt.trim()) {
+        subtitlePath = ensureContained(storageRoot, path.join(timelineDir, "captions.srt"));
+        await fs.writeFile(subtitlePath, body.srt.replace(/\r/g, ""), "utf8");
+      }
+      const audioPath = ensureContained(storageRoot, path.join(timelineDir, "narration.wav"));
+      if (audioFile) await normalizeVoiceClip(ffmpegCommand, audioFile.path, audioPath);
+      else {
+        const generated = await generateStandardVoiceover({ script, voice: body.voice, speed: 1, ffmpegCommand, tempDir: incomingRoot });
+        await fs.writeFile(audioPath, generated.audio);
+      }
+      const mixedPath = ensureContained(storageRoot, path.join(timelineDir, "mixed.mp4"));
+      await execFileAsync(ffmpegCommand, ["-y", "-i", sourcePath, "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", mixedPath], { maxBuffer: 1024 * 1024 * 4 });
+      const outputPath = ensureContained(storageRoot, path.join(timelineDir, "timeline.mp4"));
+      if (subtitlePath) {
+        try { await burnTimelineSubtitles({ inputPath: mixedPath, subtitlePath, outputPath, ffmpegCommand }); }
+        catch { await fs.copyFile(mixedPath, outputPath); }
+      } else await fs.copyFile(mixedPath, outputPath);
+      const timeline = await prisma.voiceTimeline.create({ data: { id, userId: req.userId, projectId: body.projectId || null, title: body.title, voice: body.voice, sourcePath, audioPath, subtitlePath, outputPath, subtitleText: subtitleText || script, status: "COMPLETED", durationSeconds } });
+      let asset = null;
+      if (body.projectId) {
+        const last = await prisma.mediaAsset.findFirst({ where: { projectId: body.projectId, type: "VIDEO" }, orderBy: { displayOrder: "desc" } });
+        asset = await prisma.mediaAsset.create({ data: { projectId: body.projectId, type: "VIDEO", filename: `${body.title}.mp4`, storagePath: outputPath, mimeType: "video/mp4", size: (await fs.stat(outputPath)).size, displayOrder: (last?.displayOrder ?? -1) + 1 } });
+      }
+      return res.status(201).json({ timeline: timelineResponse(timeline), asset: asset ? { ...asset, previewUrl: `/api/v1/media/${asset.id}/preview` } : null });
+    } catch (error) {
+      if (timelineDir) await fs.rm(timelineDir, { recursive: true, force: true }).catch(() => {});
+      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
+      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Timeline voice export failed.", code: error?.code || "TIMELINE_VOICE_ERROR" });
+    } finally {
+      await Promise.all(cleanupPaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => {})));
+    }
+  });
+
+  async function sendTimelineFile(req, res, field, mimeType, downloadName) {
+    const timeline = await prisma.voiceTimeline.findFirst({ where: { id: req.params.id, userId: req.userId } });
+    if (!timeline) return res.status(404).json({ error: "Timeline not found." });
+    const filePath = timeline[field];
+    if (!filePath) return res.status(404).json({ error: "This timeline file is not available." });
+    const safePath = ensureContained(storageRoot, filePath);
+    if (!fsSync.existsSync(safePath)) return res.status(404).json({ error: "Timeline file is missing from local storage." });
+    res.type(mimeType);
+    return downloadName ? res.download(safePath, downloadName) : res.sendFile(safePath);
+  }
+
+  app.get("/api/v1/voice/timelines/:id/video", requireAuth, (req, res) => sendTimelineFile(req, res, "outputPath", "video/mp4"));
+  app.get("/api/v1/voice/timelines/:id/download", requireAuth, (req, res) => sendTimelineFile(req, res, "outputPath", "video/mp4", "khmer-timeline.mp4"));
+  app.get("/api/v1/voice/timelines/:id/audio", requireAuth, (req, res) => sendTimelineFile(req, res, "audioPath", "audio/wav"));
+  app.get("/api/v1/voice/timelines/:id/subtitles", requireAuth, (req, res) => sendTimelineFile(req, res, "subtitlePath", "application/x-subrip"));
 
   app.post("/api/v1/projects/:id/media", requireAuth, upload.single("file"), async (req, res) => {
     const tempPath = req.file?.path;

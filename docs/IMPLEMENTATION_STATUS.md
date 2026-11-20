@@ -49,6 +49,7 @@ The detailed mapping is in [docs/CHATGPT_SCRIPT_ALIGNMENT.md](CHATGPT_SCRIPT_ALI
 | Narration history and controls | DONE | `server/phase1.js`, `src/main.jsx`, `prisma/schema.prisma` | API/UI paths implemented for preview, download, speed, paragraph regeneration, project attachment, and history | Long scripts may be better split into paragraphs to keep voice consistency |
 | Recorded narration fallback | DONE | `server/phase1.js`, `src/main.jsx` | MP3/WAV upload validation and storage reuse the authenticated local storage path | Provider-independent upload does not synthesize or alter the recording |
 | Similar voice narration | IN_PROGRESS | `server/phase1.js`, `src/main.jsx`, `src/styles.css` | Consent-gated endpoint and UI remain available in the video wizard | Live generation requires voice replication access, authentic recordings, and provider account eligibility; no voice was fabricated for testing |
+| Story recap timeline voice | IN_PROGRESS | `server/phase1.js`, `src/main.jsx`, `src/styles.css`, `prisma/schema.prisma`, `prisma/migrations/20261121050000_voice_timelines/migration.sql` | MP4/SRT/audio workflow implemented; build and syntax checks pass | Live export requires a real MP4 plus SRT/audio; subtitle burn-in depends on FFmpeg subtitle/font support |
 
 The implementation uses Gemini's stateless voice replication mode (`store: false`) and does not persist a voice profile. Generated WAV narration is saved as the project's newest audio asset so the existing FFmpeg render workflow can use it.
 

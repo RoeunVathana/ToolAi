@@ -21,7 +21,7 @@ Status: `IN_PROGRESS` (Khmer AI Voice Studio is active; provider-gated verificat
 
 Dependency: Phase 1 foundation and provider configuration.
 
-Acceptance: provider-backed script/translation/TTS abstractions, active Khmer narration studio, only real supported Gemini voices, preview/download, speed controls, paragraph regeneration, narration history, optional project attachment, recorded-audio fallback, and similar voice generation only after ownership consent.
+Acceptance: provider-backed script/translation/TTS abstractions, active Khmer narration studio, only real supported Gemini voices, preview/download, speed controls, paragraph regeneration, narration history, optional project attachment, recorded-audio fallback, and similar voice generation only after ownership consent. Timeline voice now accepts authorized MP4 + SRT/audio and exports a previewable MP4.
 
 ## Phase 3 — Video Generator
 
