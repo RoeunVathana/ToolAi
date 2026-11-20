@@ -1304,7 +1304,7 @@ function YouTubeSourceView({ url, setUrl, info, isChecking, onCheck, onImportVid
             <li>Open Content, choose your video, then select the menu.</li>
             <li>Choose Download, return here, and import the MP4.</li>
           </ol>
-          <a className="secondary-button youtube-studio-link" href="https://studio.youtube.com/" target="_blank" rel="noreferrer">Open YouTube Studio</a>
+          <a className="secondary-button youtube-studio-link" href="https://studio.youtube.com/" target="_blank" rel="noreferrer">Download my video in YouTube Studio</a>
           <label className="local-file-control source-file-control">
             <input type="file" accept="video/mp4,video/quicktime,video/webm" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImportVideo(file); }} />
             <span className="file-icon">▣</span>
