@@ -49,6 +49,26 @@ const initialForm = {
   ],
 };
 
+async function readApiResponse(response, fallbackMessage) {
+  const raw = await response.text();
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const detail = raw.trim();
+    if (/^upstream error$/i.test(detail)) {
+      return {
+        error: `The remote server is temporarily unavailable (HTTP ${response.status}). Please try again in a few seconds.`,
+      };
+    }
+    return {
+      error: response.ok
+        ? fallbackMessage
+        : `${fallbackMessage} (HTTP ${response.status}).`,
+    };
+  }
+}
+
 function App() {
   const [activeNav, setActiveNav] = useState("new");
   const [form, setForm] = useState(initialForm);
@@ -60,6 +80,8 @@ function App() {
   const [isPlanning, setIsPlanning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [localVideoFile, setLocalVideoFile] = useState(null);
+  const [textProvider, setTextProvider] = useState("gemini");
+  const [videoProvider, setVideoProvider] = useState("gemini");
   const [notice, setNotice] = useState(null);
   const [health, setHealth] = useState({
     demoMode: true,
@@ -71,11 +93,17 @@ function App() {
 
   async function loadWorkspace() {
     const [healthResult, libraryResult] = await Promise.all([
-      fetch("/api/health").then((response) => response.json()),
-      fetch("/api/library").then((response) => response.json()),
+      fetch("/api/health").then((response) =>
+        readApiResponse(response, "The health check returned an invalid response."),
+      ),
+      fetch("/api/library").then((response) =>
+        readApiResponse(response, "The library returned an invalid response."),
+      ),
     ]);
     setHealth(healthResult);
     setLibrary(libraryResult.items || []);
+    if (!health.aiProviders && healthResult.aiProviders?.activeTextProvider) setTextProvider(healthResult.aiProviders.activeTextProvider);
+    if (!health.aiProviders && healthResult.aiProviders?.activeVideoProvider) setVideoProvider(healthResult.aiProviders.activeVideoProvider);
     return healthResult;
   }
 
@@ -98,16 +126,16 @@ function App() {
   const updateField = (field, value) =>
     setForm((current) => ({ ...current, [field]: value }));
 
-  async function planWithGemini() {
+  async function planWithAI() {
     setIsPlanning(true);
     setNotice(null);
     try {
       const response = await fetch("/api/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: form.prompt, duration, sceneCount }),
+        body: JSON.stringify({ prompt: form.prompt, duration, sceneCount, provider: textProvider }),
       });
-      const data = await response.json();
+      const data = await readApiResponse(response, "Gemini planning failed.");
       if (!response.ok) throw new Error(data.error || "Gemini planning failed.");
       setStoryPlan(data.storyPlan);
       setForm((current) => ({
@@ -117,8 +145,10 @@ function App() {
         tags: data.storyPlan.tags,
       }));
       setNotice({
-        type: "success",
-        text: "Normal Gemini created the title, description, tags, scene plan, and sound directions.",
+        type: data.warning ? "info" : "success",
+        text: data.warning || (textProvider === "gemini"
+          ? "Gemini created the title, description, tags, scene plan, and sound directions."
+          : "The built-in planner created the title, description, tags, scene plan, and sound directions."),
       });
     } catch (error) {
       setNotice({ type: "error", text: error.message });
@@ -138,10 +168,12 @@ function App() {
           prompt: form.prompt,
           duration,
           sceneCount,
+          textProvider,
+          videoProvider,
           storyPlan: storyPlan?.sourcePrompt === form.prompt ? storyPlan : null,
         }),
       });
-      const data = await response.json();
+      const data = await readApiResponse(response, "Video generation failed.");
       if (!response.ok)
         throw new Error(data.error || "Video generation failed.");
       setScenes(data.scenes || []);
@@ -155,11 +187,11 @@ function App() {
         }));
       }
       setNotice({
-        type: data.mode === "demo" ? "info" : "success",
-        text:
-          data.mode === "demo"
+        type: data.warning || data.mode === "demo" ? "info" : "success",
+        text: data.warning ||
+          (data.mode === "demo"
             ? "Preview generated in demo mode. Add your Gemini API key when you are ready for real clips with sound."
-            : "Your scenes are ready with Gemini audio directions. Review the title and publish settings before sending them to YouTube or Facebook.",
+            : "Your scenes are ready. Review the title and publish settings before sending them to YouTube or Facebook."),
       });
     } catch (error) {
       setNotice({ type: "error", text: error.message });
@@ -196,7 +228,7 @@ function App() {
         method: "POST",
         body: payload,
       });
-      const data = await response.json();
+      const data = await readApiResponse(response, "Upload failed.");
       if (!response.ok) throw new Error(data.error || "Upload failed.");
       setLibrary((items) => [data.item, ...items]);
       setNotice({
@@ -235,7 +267,7 @@ function App() {
         method: "POST",
         body: payload,
       });
-      const data = await response.json();
+      const data = await readApiResponse(response, "Facebook upload failed.");
       if (!response.ok) throw new Error(data.error || "Facebook upload failed.");
       setLibrary((items) => [data.item, ...items]);
       setNotice({
@@ -279,7 +311,7 @@ function App() {
         method: "POST",
         body: payload,
       });
-      const data = await response.json();
+      const data = await readApiResponse(response, "Publishing failed.");
       if (!response.ok) throw new Error(data.error || "Publishing failed.");
       const items = data.items || Object.values(data.results || {});
       setLibrary((current) => [...items, ...current]);
@@ -297,11 +329,31 @@ function App() {
     }
   }
 
+  async function switchConnection(kind, id) {
+    if (!id) return;
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/connections/${kind}/active`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(kind === "youtube" ? { accountId: id } : { pageId: id }),
+      });
+      const data = await readApiResponse(response, "Could not change the connection.");
+      if (!response.ok) throw new Error(data.error || "Could not change the connection.");
+      await loadWorkspace();
+      setNotice({ type: "success", text: kind === "youtube" ? "YouTube channel changed." : "Facebook Page changed." });
+    } catch (error) {
+      setNotice({ type: "error", text: error.message });
+    }
+  }
+
   const hasRealVideo = Boolean(localVideoFile || scenes.some((scene) => scene.videoUrl));
   const youtubeChannelLabel = health.youtubeChannel
     ? `${health.youtubeChannel.title}${health.youtubeChannel.handle ? ` · ${health.youtubeChannel.handle}` : ""}`
     : "One-time sign-in required";
   const facebookPageLabel = health.facebookPage?.name || "One-time Page sign-in required";
+  const textProviders = health.aiProviders?.text || [];
+  const videoProviders = health.aiProviders?.video || [];
 
   return (
     <div className="app-shell">
@@ -438,7 +490,7 @@ function App() {
           {activeNav === "library" ? (
             <LibraryView library={library} onNew={() => setActiveNav("new")} />
           ) : activeNav === "channel" ? (
-            <ChannelView health={health} />
+            <ChannelView health={health} onSwitch={switchConnection} />
           ) : (
             <>
               <div className="content-grid">
@@ -503,12 +555,37 @@ function App() {
                     </button>
                     <button
                       className="gemini-plan-button"
-                      onClick={planWithGemini}
-                      disabled={isPlanning || !health.geminiConfigured}
-                      title={!health.geminiConfigured ? "Add GEMINI_API_KEY first" : "Ask normal Gemini to prepare the production plan"}
+                      onClick={planWithAI}
+                      disabled={isPlanning || !textProviders.find((provider) => provider.id === textProvider)?.configured}
+                      title="Prepare the title, scenes, tags, and sound directions"
                     >
-                      {isPlanning ? "Planning…" : "Improve with Gemini"}
+                      {isPlanning ? "Planning…" : `Improve with ${textProviders.find((provider) => provider.id === textProvider)?.label || "AI"}`}
                     </button>
+                  </div>
+
+                  <div className="ai-provider-grid">
+                    <label className="provider-field">
+                      <span>Story planner</span>
+                      <select value={textProvider} onChange={(event) => setTextProvider(event.target.value)}>
+                        {textProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id} disabled={!provider.configured}>
+                            {provider.label}{provider.configured ? "" : " · setup needed"}
+                          </option>
+                        ))}
+                      </select>
+                      <small>{textProviders.find((provider) => provider.id === textProvider)?.description || "Choose how the production plan is prepared."}</small>
+                    </label>
+                    <label className="provider-field">
+                      <span>Video tool</span>
+                      <select value={videoProvider} onChange={(event) => setVideoProvider(event.target.value)}>
+                        {videoProviders.map((provider) => (
+                          <option key={provider.id} value={provider.id} disabled={!provider.configured}>
+                            {provider.label}{provider.configured ? "" : " · setup needed"}
+                          </option>
+                        ))}
+                      </select>
+                      <small>{videoProviders.find((provider) => provider.id === videoProvider)?.description || "Choose where the video is created."}</small>
+                    </label>
                   </div>
 
                   <div className="field-row">
@@ -562,7 +639,7 @@ function App() {
                   <button
                     className="primary-button generate-button"
                     onClick={generateVideo}
-                    disabled={isGenerating}
+                    disabled={isGenerating || videoProvider === "external-upload"}
                   >
                     <span>
                       {isGenerating ? "Generating scenes…" : "Generate video"}
@@ -572,9 +649,11 @@ function App() {
                     </span>
                   </button>
                   <p className="generation-note">
-                    {health.geminiConfigured
-                      ? "Powered by Gemini Omni · synchronized audio requested"
-                      : "Preview mode · add a Gemini API key for real video generation with sound"}
+                    {videoProvider === "external-upload"
+                      ? "Use another AI tool, export an MP4, then choose it below"
+                      : health.geminiConfigured
+                        ? "Powered by Gemini Omni · synchronized audio requested"
+                        : "Preview mode · add a Gemini API key for real video generation with sound"}
                   </p>
                 </section>
 
@@ -809,9 +888,24 @@ function App() {
                         </small>
                       </div>
                       <a className="connect-button" href="/api/auth/youtube">
-                        {health.youtubeConnected ? "Switch" : "Connect"}
+                        {health.youtubeConnected ? "Add / switch" : "Connect"}
                       </a>
                     </div>
+                    {health.youtubeChannels?.length > 1 && (
+                      <label className="connection-selector">
+                        <span>Active YouTube channel</span>
+                        <select
+                          value={health.activeYoutubeChannelId || ""}
+                          onChange={(event) => switchConnection("youtube", event.target.value)}
+                        >
+                          {health.youtubeChannels.map((channel) => (
+                            <option key={channel.id} value={channel.id}>
+                              {channel.title}{channel.handle ? ` · ${channel.handle}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <div className="channel-connection">
                       <div className="facebook-badge">f</div>
                       <div>
@@ -827,9 +921,24 @@ function App() {
                         </small>
                       </div>
                       <a className="connect-button" href="/api/auth/facebook">
-                        {health.facebookConnected ? "Switch" : "Connect"}
+                        {health.facebookConnected ? "Add / switch" : "Connect"}
                       </a>
                     </div>
+                    {health.facebookPages?.length > 1 && (
+                      <label className="connection-selector">
+                        <span>Active Facebook Page</span>
+                        <select
+                          value={health.activeFacebookPageId || ""}
+                          onChange={(event) => switchConnection("facebook", event.target.value)}
+                        >
+                          {health.facebookPages.map((page) => (
+                            <option key={page.id} value={page.id}>
+                              {page.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                     <label className="local-file-control">
                       <input
                         type="file"
@@ -967,7 +1076,7 @@ function LibraryView({ library, onNew }) {
   );
 }
 
-function ChannelView({ health }) {
+function ChannelView({ health, onSwitch }) {
   return (
     <section className="channel-view card">
       <div className="channel-hero">
@@ -1013,6 +1122,21 @@ function ChannelView({ health }) {
             {health.youtubeConnected ? "Ready" : "Not connected"}
           </span>
         </div>
+        {health.youtubeChannels?.length > 1 && (
+          <div className="channel-switch-row">
+            <label>
+              <strong>Active YouTube channel</strong>
+              <select
+                value={health.activeYoutubeChannelId || ""}
+                onChange={(event) => onSwitch("youtube", event.target.value)}
+              >
+                {health.youtubeChannels.map((channel) => (
+                  <option key={channel.id} value={channel.id}>{channel.title}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
         <div>
           <span className="setting-icon facebook-badge">f</span>
           <div>
@@ -1027,6 +1151,21 @@ function ChannelView({ health }) {
             {health.facebookConnected ? "Ready" : "Not connected"}
           </span>
         </div>
+        {health.facebookPages?.length > 1 && (
+          <div className="channel-switch-row">
+            <label>
+              <strong>Active Facebook Page</strong>
+              <select
+                value={health.activeFacebookPageId || ""}
+                onChange={(event) => onSwitch("facebook", event.target.value)}
+              >
+                {health.facebookPages.map((page) => (
+                  <option key={page.id} value={page.id}>{page.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
     </section>
   );

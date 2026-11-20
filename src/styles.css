@@ -570,6 +570,40 @@ input:focus,
   opacity: 0.45;
   cursor: not-allowed;
 }
+.ai-provider-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: -8px 0 22px;
+}
+.provider-field,
+.connection-selector {
+  display: grid;
+  gap: 5px;
+}
+.provider-field > span,
+.connection-selector > span {
+  color: var(--muted-2);
+  font: 9px "DM Mono";
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.provider-field select,
+.connection-selector select,
+.channel-switch-row select {
+  width: 100%;
+  color: var(--text);
+  background: rgba(5, 17, 27, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 9px;
+  font-size: 10px;
+}
+.provider-field small {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
 .field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1203,6 +1237,9 @@ input:focus,
   padding: 5px 7px;
   border-radius: 5px;
 }
+.connection-selector {
+  margin: -3px 0 10px 36px;
+}
 .local-file-control {
   display: flex;
   align-items: center;
@@ -1417,6 +1454,18 @@ input:focus,
 .check-badge.muted {
   color: var(--muted);
 }
+.channel-switch-row {
+  display: block !important;
+  padding: 12px 16px !important;
+}
+.channel-switch-row label {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+.channel-switch-row select {
+  max-width: 420px;
+}
 @media (max-width: 1050px) {
   .content-grid,
   .upload-grid {
@@ -1427,6 +1476,9 @@ input:focus,
   }
   .upload-grid {
     gap: 20px;
+  }
+  .ai-provider-grid {
+    grid-template-columns: 1fr;
   }
 }
 @media (max-width: 780px) {

@@ -70,6 +70,8 @@ const scenePresets = [
 ];
 
 let youtubeAuth = null;
+let youtubeAccounts = [];
+let activeYoutubeAccountId = null;
 let facebookAuth = null;
 let facebookOAuthState = null;
 
@@ -186,12 +188,73 @@ function getFacebookPageCredentials() {
       name: process.env.FB_PAGE_NAME || "Configured Facebook Page",
     };
   }
-  const requestedId = process.env.FB_PAGE_ID;
+  const requestedId = facebookAuth?.activePageId || process.env.FB_PAGE_ID;
   return (
     facebookAuth?.pages?.find((page) => page.access_token && (!requestedId || page.id === requestedId)) ||
     facebookAuth?.pages?.find((page) => page.access_token) ||
     null
   );
+}
+
+function getFacebookPageOptions() {
+  if (process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN) {
+    return [{
+      id: process.env.FB_PAGE_ID,
+      name: process.env.FB_PAGE_NAME || "Configured Facebook Page",
+      active: true,
+      managedByEnvironment: true,
+    }];
+  }
+  const activeId = facebookAuth?.activePageId || facebookAuth?.pages?.[0]?.id || null;
+  return (facebookAuth?.pages || []).map((page) => ({
+    id: page.id,
+    name: page.name || "Facebook Page",
+    active: page.id === activeId,
+    tasks: page.tasks || [],
+  }));
+}
+
+function getActiveYoutubeAccount() {
+  return youtubeAccounts.find((account) => account.id === activeYoutubeAccountId) || youtubeAccounts[0] || null;
+}
+
+function youtubeAccountTokens(account) {
+  return account?.tokens || (account?.access_token || account?.refresh_token ? account : null);
+}
+
+function getYoutubeAccountOptions() {
+  return youtubeAccounts.map((account) => ({
+    id: account.id,
+    title: account.title || "Connected YouTube channel",
+    handle: account.handle || "",
+    subscribers: account.subscribers || "0",
+    videos: account.videos || "0",
+    active: account.id === (activeYoutubeAccountId || youtubeAccounts[0]?.id),
+  }));
+}
+
+async function saveYoutubeAccounts() {
+  await saveAuth(youtubeTokenPath, {
+    activeId: activeYoutubeAccountId,
+    accounts: youtubeAccounts,
+  });
+}
+
+function aiProviderOptions() {
+  const activeTextProvider = process.env.AI_TEXT_PROVIDER || "gemini";
+  const activeVideoProvider = process.env.AI_VIDEO_PROVIDER || "gemini";
+  return {
+    activeTextProvider,
+    activeVideoProvider,
+    text: [
+      { id: "gemini", label: "Gemini normal planner", configured: hasGeminiConfig(), description: "Creates titles, tags, scenes, and sound directions." },
+      { id: "template", label: "Built-in planner", configured: true, description: "Uses the safe ToyPost workflow without an external AI key." },
+    ],
+    video: [
+      { id: "gemini", label: "Gemini Omni video + sound", configured: hasGeminiConfig(), description: "Generates clips with synchronized audio directions." },
+      { id: "external-upload", label: "Another AI tool", configured: true, description: "Generate with another tool, then upload its MP4 through the same publishing flow." },
+    ],
+  };
 }
 
 async function verifyFacebookPage() {
@@ -268,7 +331,7 @@ function findTextContent(interaction) {
     .find((content) => content.type === "text")?.text;
 }
 
-function normalizeStoryPlan(value, generationPlan, sourcePrompt) {
+function normalizeStoryPlan(value, generationPlan, sourcePrompt, model = process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash") {
   const fallbackTitle = "Original Toy Playset Adventure";
   const fallbackDescription = "A cheerful original toy playset adventure with gentle movement, playful sound, and family-friendly fun. #Toys #PretendPlay #KidsToys";
   const scenes = Array.from({ length: generationPlan.count }, (_, index) => {
@@ -289,7 +352,7 @@ function normalizeStoryPlan(value, generationPlan, sourcePrompt) {
     description: String(value?.description || fallbackDescription).slice(0, 5000),
     tags: tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 15),
     scenes,
-    model: process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash",
+    model,
   };
 }
 
@@ -316,6 +379,42 @@ async function planStoryWithGemini({ prompt = defaultPrompt, sceneCount = 4, dur
     throw new Error("Gemini returned an invalid story plan. Please try again.");
   }
   return normalizeStoryPlan(parsed, generationPlan, prompt);
+}
+
+function planStoryWithTemplate({ prompt = defaultPrompt, sceneCount = 4, duration = 60 }) {
+  const generationPlan = createGenerationPlan(sceneCount, duration);
+  return normalizeStoryPlan({
+    title: "Original Toy Playset Adventure",
+    description: "A cheerful original toy playset adventure with gentle movement, playful sound, and family-friendly fun. #Toys #PretendPlay #KidsToys",
+    tags: ["toys", "kids toys", "pretend play", "miniature toys", "toy story"],
+    scenes: Array.from({ length: generationPlan.count }, (_, index) => {
+      const preset = scenePresets[index % scenePresets.length];
+      return { title: preset.title, prompt: preset.prompt, audio: audioDirection };
+    }),
+  }, generationPlan, prompt, "built-in");
+}
+
+function isTransientGeminiError(error) {
+  const status = Number(error?.status || error?.code || error?.response?.status);
+  const message = String(error?.message || error || "");
+  return [429, 500, 502, 503, 504].includes(status) || /high demand|temporar|overload|unavailable|resource exhausted|try again later/i.test(message);
+}
+
+async function planStoryWithProvider({ provider = process.env.AI_TEXT_PROVIDER || "gemini", prompt = defaultPrompt, sceneCount = 4, duration = 60 }) {
+  if (provider === "template") return planStoryWithTemplate({ prompt, sceneCount, duration });
+  if (provider !== "gemini") throw new Error(`Unsupported story planner: ${provider}.`);
+  if (!hasGeminiConfig()) throw new Error("Add GEMINI_API_KEY to use Gemini planning, or choose the built-in planner.");
+  try {
+    return await planStoryWithGemini({ prompt, sceneCount, duration });
+  } catch (error) {
+    if (!isTransientGeminiError(error)) throw error;
+    const fallback = planStoryWithTemplate({ prompt, sceneCount, duration });
+    return {
+      ...fallback,
+      provider: "template",
+      warning: "Gemini is temporarily busy, so ToyPost used its built-in planner. Try Gemini again later for AI-written metadata.",
+    };
+  }
 }
 
 function createDemoScenes(sceneCount, duration) {
@@ -396,14 +495,15 @@ async function generateGeminiClip(prompt, index, total, duration) {
 function getYoutubeClient() {
   const client = createOAuthClient();
   if (!client) return null;
-  if (process.env.YT_REFRESH_TOKEN) client.setCredentials({ refresh_token: process.env.YT_REFRESH_TOKEN });
+  const activeAccount = getActiveYoutubeAccount();
+  const activeTokens = youtubeAccountTokens(activeAccount);
+  if (activeTokens) client.setCredentials(activeTokens);
+  else if (process.env.YT_REFRESH_TOKEN) client.setCredentials({ refresh_token: process.env.YT_REFRESH_TOKEN });
   else if (youtubeAuth) client.setCredentials(youtubeAuth);
   return client;
 }
 
-async function getYoutubeChannel() {
-  const auth = getYoutubeClient();
-  if (!auth || (!process.env.YT_REFRESH_TOKEN && !youtubeAuth)) return null;
+async function getYoutubeChannelFromClient(auth) {
   try {
     const youtube = google.youtube({ version: "v3", auth });
     const response = await youtube.channels.list({ part: ["snippet", "statistics"], mine: true });
@@ -419,6 +519,24 @@ async function getYoutubeChannel() {
   } catch (error) {
     return { error: error.message || "YouTube connection could not be verified." };
   }
+}
+
+async function getYoutubeChannel() {
+  const auth = getYoutubeClient();
+  const activeAccount = getActiveYoutubeAccount();
+  if (!auth || (!activeAccount && !process.env.YT_REFRESH_TOKEN && !youtubeAuth)) return null;
+  return getYoutubeChannelFromClient(auth);
+}
+
+async function getYoutubeConnectionOptions() {
+  const options = getYoutubeAccountOptions();
+  if (!options.length && process.env.YT_REFRESH_TOKEN) {
+    const channel = await getYoutubeChannel();
+    if (channel && !channel.error) {
+      return [{ ...channel, active: true }];
+    }
+  }
+  return options;
 }
 
 function parseTags(value) {
@@ -613,6 +731,7 @@ async function publishTargets({ req, targets }) {
 
 app.get("/api/health", async (_req, res) => {
   const youtubeChannel = await getYoutubeChannel();
+  const youtubeChannels = await getYoutubeConnectionOptions();
   const facebookPage = await verifyFacebookPage();
   res.json({
     ok: true,
@@ -620,13 +739,40 @@ app.get("/api/health", async (_req, res) => {
     youtubeConfigured: hasYoutubeConfig(),
     youtubeConnected: Boolean(youtubeChannel && !youtubeChannel.error),
     youtubeChannel: youtubeChannel && !youtubeChannel.error ? youtubeChannel : null,
+    youtubeChannels,
+    activeYoutubeChannelId: getActiveYoutubeAccount()?.id || youtubeChannel?.id || null,
     youtubeError: youtubeChannel?.error || null,
     facebookConfigured: hasFacebookConfig(),
     facebookConnected: Boolean(facebookPage && !facebookPage.error),
     facebookPage: facebookPage && !facebookPage.error ? facebookPage : null,
+    facebookPages: getFacebookPageOptions(),
+    activeFacebookPageId: getFacebookPageCredentials()?.id || null,
     facebookError: facebookPage?.error || null,
+    aiProviders: aiProviderOptions(),
     demoMode: !hasGeminiConfig(),
   });
+});
+
+app.post("/api/connections/youtube/active", async (req, res) => {
+  const accountId = String(req.body?.accountId || "");
+  const account = youtubeAccounts.find((item) => item.id === accountId);
+  if (!account) return res.status(404).json({ error: "That YouTube channel is not connected yet. Use Add / switch to connect it." });
+  activeYoutubeAccountId = account.id;
+  youtubeAuth = youtubeAccountTokens(account);
+  await saveYoutubeAccounts();
+  return res.json({ ok: true, activeYoutubeChannelId: account.id, youtubeChannel: getYoutubeAccountOptions().find((item) => item.id === account.id) });
+});
+
+app.post("/api/connections/facebook/active", async (req, res) => {
+  const pageId = String(req.body?.pageId || "");
+  if (process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN) {
+    return res.status(409).json({ error: "The Facebook Page is fixed by FB_PAGE_ID in the environment." });
+  }
+  const page = facebookAuth?.pages?.find((item) => item.id === pageId);
+  if (!page) return res.status(404).json({ error: "That Facebook Page is not connected yet. Use Add / switch to connect it." });
+  facebookAuth = { ...facebookAuth, activePageId: page.id };
+  await saveAuth(facebookTokenPath, facebookAuth);
+  return res.json({ ok: true, activeFacebookPageId: page.id, facebookPage: { id: page.id, name: page.name } });
 });
 
 app.get("/api/presets", (_req, res) => res.json({ defaultPrompt, presets: scenePresets }));
@@ -636,7 +782,7 @@ app.get("/api/auth/youtube", (req, res) => {
   const redirectUri = youtubeRedirectUri(req);
   const client = createOAuthClient(redirectUri);
   if (!client) return res.status(503).send(`YouTube setup required. Add YT_CLIENT_ID and YT_CLIENT_SECRET. Callback: ${redirectUri}`);
-  const authUrl = client.generateAuthUrl({ access_type: "offline", prompt: "consent", scope: ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"] });
+  const authUrl = client.generateAuthUrl({ access_type: "offline", prompt: "select_account consent", scope: ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"] });
   return res.redirect(authUrl);
 });
 
@@ -646,8 +792,23 @@ app.get("/api/auth/youtube/callback", async (req, res) => {
     const client = createOAuthClient(youtubeRedirectUri(req));
     if (!client || !req.query.code) return res.status(400).send("YouTube connection failed: Google did not return an authorization code.");
     const { tokens } = await client.getToken(req.query.code);
+    client.setCredentials(tokens);
+    const channel = await getYoutubeChannelFromClient(client);
+    if (channel?.error) throw new Error(channel.error);
+    const accountId = channel?.id || crypto.randomUUID();
+    const account = {
+      id: accountId,
+      title: channel?.title || "Connected YouTube channel",
+      handle: channel?.handle || "",
+      subscribers: channel?.subscribers || "0",
+      videos: channel?.videos || "0",
+      tokens,
+      connectedAt: new Date().toISOString(),
+    };
+    youtubeAccounts = [account, ...youtubeAccounts.filter((item) => item.id !== accountId)];
+    activeYoutubeAccountId = accountId;
     youtubeAuth = tokens;
-    await saveAuth(youtubeTokenPath, tokens);
+    await saveYoutubeAccounts();
     res.send("<h1>YouTube connected</h1><p>You can close this tab and return to ToyPost Studio.</p>");
   } catch (error) {
     res.status(400).send(`YouTube connection failed: ${error.message}`);
@@ -701,7 +862,7 @@ app.get("/api/auth/facebook/callback", async (req, res) => {
     const pagesResponse = await facebookJson(pagesUrl.toString());
     const pages = (pagesResponse.data || []).filter((page) => page.id && page.access_token).map((page) => ({ id: page.id, name: page.name || "Facebook Page", access_token: page.access_token, tasks: page.tasks || [] }));
     if (!pages.length) throw new Error("No Facebook Page with publishing access was returned.");
-    facebookAuth = { userAccessToken, pages, connectedAt: new Date().toISOString() };
+    facebookAuth = { userAccessToken, pages, activePageId: pages[0].id, connectedAt: new Date().toISOString() };
     await saveAuth(facebookTokenPath, facebookAuth);
     facebookOAuthState = null;
     res.send(`<h1>Facebook Page connected</h1><p>${pages[0].name} is ready for Reel publishing.</p><p>You can close this tab and return to ToyPost Studio.</p>`);
@@ -711,35 +872,42 @@ app.get("/api/auth/facebook/callback", async (req, res) => {
 });
 
 app.post("/api/plan", async (req, res) => {
-  if (!hasGeminiConfig()) {
-    return res.status(503).json({ error: "Add GEMINI_API_KEY to use normal Gemini planning." });
-  }
   try {
-    const storyPlan = await planStoryWithGemini(req.body || {});
-    return res.json({ storyPlan });
+    const storyPlan = await planStoryWithProvider(req.body || {});
+    return res.json({ storyPlan, warning: storyPlan.warning || null });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Gemini planning failed." });
   }
 });
 
 app.post("/api/generate", async (req, res) => {
-  const { prompt = defaultPrompt, sceneCount = 4, duration = 60, storyPlan: suppliedStoryPlan = null } = req.body || {};
+  const {
+    prompt = defaultPrompt,
+    sceneCount = 4,
+    duration = 60,
+    textProvider = process.env.AI_TEXT_PROVIDER || "gemini",
+    videoProvider = process.env.AI_VIDEO_PROVIDER || "gemini",
+    storyPlan: suppliedStoryPlan = null,
+  } = req.body || {};
   const plan = createGenerationPlan(sceneCount, duration);
   try {
     await fs.mkdir(generatedDir, { recursive: true });
+    if (videoProvider === "external-upload") {
+      return res.status(400).json({ error: "Choose another AI tool, export its MP4, and use Use an existing video below to continue publishing." });
+    }
     if (!hasGeminiConfig()) {
       const scenes = createDemoScenes(sceneCount, duration);
       return res.json({ mode: "demo", message: "Demo scenes ready. Add GEMINI_API_KEY to generate real Gemini clips.", scenes, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
     }
     const storyPlan = suppliedStoryPlan?.sourcePrompt === prompt
       ? normalizeStoryPlan(suppliedStoryPlan, plan, prompt)
-      : await planStoryWithGemini({ prompt, sceneCount, duration });
+      : await planStoryWithProvider({ provider: textProvider, prompt, sceneCount, duration });
     const prompts = storyPlan.scenes.map((scene) =>
       `${prompt}\n\nScene direction: ${scene.prompt}\n\n${scene.audio}\n\n${audioDirection}`,
     );
     const scenes = [];
     for (let index = 0; index < prompts.length; index += 1) scenes.push(await generateGeminiClip(prompts[index], index, prompts.length, plan.durations[index]));
-    return res.json({ mode: "gemini", scenes, storyPlan, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
+    return res.json({ mode: "gemini", scenes, storyPlan, warning: storyPlan.warning || null, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Video generation failed." });
   }
@@ -785,7 +953,14 @@ if (process.env.NODE_ENV === "production" || fsSync.existsSync(path.join(rootDir
   app.get(/.*/, (_req, res) => res.sendFile(path.join(rootDir, "dist", "index.html")));
 }
 
-youtubeAuth = await loadAuth(youtubeTokenPath);
+const savedYoutubeAuth = await loadAuth(youtubeTokenPath);
+if (Array.isArray(savedYoutubeAuth?.accounts)) {
+  youtubeAccounts = savedYoutubeAuth.accounts;
+  activeYoutubeAccountId = savedYoutubeAuth.activeId || youtubeAccounts[0]?.id || null;
+  youtubeAuth = youtubeAccountTokens(getActiveYoutubeAccount());
+} else if (savedYoutubeAuth?.access_token || savedYoutubeAuth?.refresh_token) {
+  youtubeAuth = savedYoutubeAuth;
+}
 facebookAuth = await loadAuth(facebookTokenPath);
 
 app.listen(port, () => console.log(`ToyPost API listening on http://localhost:${port}`));
