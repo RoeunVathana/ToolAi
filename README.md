@@ -66,6 +66,17 @@ npm run db:seed        # seed demo data
 npm run test:phase1    # API, upload, render, preview/download, and FFprobe test
 ```
 
+## Automatic Railway deployment
+
+The GitHub Actions workflow at `.github/workflows/ci-cd.yml` validates every pull request and push to `main`. A push to `main` deploys to Railway after validation when the repository has these GitHub Actions settings:
+
+- Secret `RAILWAY_TOKEN`: a Railway project or workspace token stored only in GitHub Actions secrets.
+- Secret `RAILWAY_PROJECT_ID`: `297d4868-15b5-43cc-9a51-6b559bb1d3f6`.
+- Variable `RAILWAY_ENVIRONMENT`: `production` (optional; this is the default).
+- Variable `RAILWAY_SERVICE_ID`: `76aba715-5c7e-4612-95ae-004fecc4b8c0` (optional; this is the default).
+
+The workflow also supports `workflow_dispatch` for a manual deployment from GitHub. Never commit a Railway token or paste it into source files. Railway's native GitHub auto-deploy toggle additionally requires the Railway GitHub App to be installed with access to `RoeunVathana/ToolAi`; the current Railway account reports `NO_INSTALLATION`, so the Actions workflow is the deterministic deployment path once the secret is added.
+
 The Phase 1 test uses a running API and PostgreSQL:
 
 ```powershell

@@ -5,6 +5,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -41,7 +42,7 @@ jobs:
 
   deploy:
     name: Deploy to Railway
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
     environment: production
@@ -49,6 +50,7 @@ jobs:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
       RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT || 'production' }}
+      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID || '76aba715-5c7e-4612-95ae-004fecc4b8c0' }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -67,4 +69,4 @@ jobs:
 
       - name: Deploy service
         if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
-        run: railway up --ci --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT"
+        run: railway up --ci --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE_ID"
