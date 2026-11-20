@@ -315,6 +315,34 @@ button:disabled {
   align-items: center;
   gap: 15px;
 }
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(184, 214, 231, 0.2);
+  border-radius: 9px;
+  background: rgba(13, 27, 40, 0.9);
+}
+.language-switcher-label {
+  padding: 0 5px 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.language-switcher button {
+  min-width: 36px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+.language-switcher button:hover,
+.language-switcher button.active {
+  background: rgba(98, 221, 194, 0.16);
+  color: var(--text);
+}
 .status-pill {
   border: 1px solid rgba(255, 138, 112, 0.25);
   padding: 7px 10px;
@@ -2449,6 +2477,9 @@ input:focus,
     padding: 0 18px;
   }
   .status-pill {
+    display: none;
+  }
+  .language-switcher-label {
     display: none;
   }
   .page-heading {

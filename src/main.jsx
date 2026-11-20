@@ -49,6 +49,55 @@ const initialForm = {
   ],
 };
 
+const uiCopy = {
+  en: {
+    language: "Language",
+    newPost: "New post",
+    library: "Library",
+    mediaLab: "AI Media Lab",
+    toolchain: "AI Toolchain",
+    youtubeSource: "YouTube source",
+    channelSetup: "Channel setup",
+    monthlyGeneration: "Monthly generation",
+    demoUnlimited: "Demo mode is unlimited",
+    helpCenter: "Help center",
+    mainNavigation: "Main navigation",
+    youtubeConnected: "YouTube connected",
+    youtubeNotConnected: "YouTube not connected",
+    youtubeStatus: "YouTube connection status",
+    notifications: "Notifications",
+    refreshStatus: "Refresh connection status",
+    connections: "Connections",
+    generateVideo: "Generate a video",
+    dubTranslate: "Dub and translate",
+    chooseProcess: "Choose your process",
+    importVideo: "Import your own video",
+  },
+  km: {
+    language: "ភាសា",
+    newPost: "បង្ហោះថ្មី",
+    library: "បណ្ណាល័យ",
+    mediaLab: "មន្ទីរពិសោធន៍មេឌៀ AI",
+    toolchain: "ខ្សែសង្វាក់ AI",
+    youtubeSource: "ប្រភព YouTube",
+    channelSetup: "ការកំណត់ឆានែល",
+    monthlyGeneration: "ការបង្កើតប្រចាំខែ",
+    demoUnlimited: "របៀបសាកល្បងមិនកំណត់",
+    helpCenter: "មជ្ឈមណ្ឌលជំនួយ",
+    mainNavigation: "ការរុករកសំខាន់",
+    youtubeConnected: "បានភ្ជាប់ YouTube",
+    youtubeNotConnected: "មិនទាន់ភ្ជាប់ YouTube",
+    youtubeStatus: "ស្ថានភាពការភ្ជាប់ YouTube",
+    notifications: "ការជូនដំណឹង",
+    refreshStatus: "ធ្វើឱ្យស្ថានភាពការភ្ជាប់ថ្មី",
+    connections: "ការតភ្ជាប់",
+    generateVideo: "បង្កើតវីដេអូ",
+    dubTranslate: "បញ្ចូលសំឡេង និងបកប្រែ",
+    chooseProcess: "ជ្រើសរើសដំណើរការ",
+    importVideo: "នាំចូលវីដេអូរបស់អ្នក",
+  },
+};
+
 function formatRetryDelay(value) {
   const match = String(value || "").match(/([0-9]+(?:\.[0-9]+)?)s/i);
   if (!match) return "";
@@ -101,6 +150,10 @@ async function readApiResponse(response, fallbackMessage) {
 
 function App() {
   const [activeNav, setActiveNav] = useState("new");
+  const [uiLanguage, setUiLanguage] = useState(() => {
+    if (typeof window === "undefined") return "en";
+    return window.localStorage.getItem("toypost-ui-language") === "km" ? "km" : "en";
+  });
   const [form, setForm] = useState(initialForm);
   const [duration, setDuration] = useState(60);
   const [sceneCount, setSceneCount] = useState(4);
@@ -159,6 +212,11 @@ function App() {
         }),
       );
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("toypost-ui-language", uiLanguage);
+    document.documentElement.lang = uiLanguage === "km" ? "km" : "en";
+  }, [uiLanguage]);
 
   const totalDuration = useMemo(
     () =>
@@ -490,6 +548,16 @@ function App() {
   const facebookPageLabel = health.facebookPage?.name || "One-time Page sign-in required";
   const textProviders = health.aiProviders?.text || [];
   const videoProviders = health.aiProviders?.video || [];
+  const ui = uiCopy[uiLanguage];
+  const breadcrumbLabels = {
+    new: [ui.newPost, ui.generateVideo],
+    library: [ui.library, ui.library],
+    media: [ui.mediaLab, ui.dubTranslate],
+    tools: [ui.toolchain, ui.chooseProcess],
+    source: [ui.youtubeSource, ui.importVideo],
+    channel: [ui.channelSetup, ui.connections],
+  };
+  const [breadcrumbParent, breadcrumbCurrent] = breadcrumbLabels[activeNav] || breadcrumbLabels.new;
 
   return (
     <div className="app-shell">
@@ -514,60 +582,60 @@ function App() {
           <span className="chip-dot" />
         </div>
 
-        <nav className="main-nav" aria-label="Main navigation">
+        <nav className="main-nav" aria-label={ui.mainNavigation}>
           <button
             className={activeNav === "new" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("new")}
           >
-            <span className="nav-icon">✦</span> New post{" "}
+            <span className="nav-icon">✦</span> {ui.newPost}{" "}
             <span className="nav-shortcut">N</span>
           </button>
           <button
             className={activeNav === "library" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("library")}
           >
-            <span className="nav-icon">▤</span> Library{" "}
+            <span className="nav-icon">▤</span> {ui.library}{" "}
             <span className="nav-count">{library.length}</span>
           </button>
           <button
             className={activeNav === "media" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("media")}
           >
-            <span className="nav-icon">◌</span> AI Media Lab <span className="nav-badge">AI</span>
+            <span className="nav-icon">◌</span> {ui.mediaLab} <span className="nav-badge">AI</span>
           </button>
           <button
             className={activeNav === "tools" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("tools")}
           >
-            <span className="nav-icon">⌘</span> AI Toolchain
+            <span className="nav-icon">⌘</span> {ui.toolchain}
           </button>
           <button
             className={activeNav === "source" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("source")}
           >
-            <span className="nav-icon">⇩</span> YouTube source
+            <span className="nav-icon">⇩</span> {ui.youtubeSource}
           </button>
           <button
             className={activeNav === "channel" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("channel")}
           >
-            <span className="nav-icon">◉</span> Channel setup
+            <span className="nav-icon">◉</span> {ui.channelSetup}
           </button>
         </nav>
 
         <div className="sidebar-footer">
           <div className="usage-card">
             <div className="usage-heading">
-              <span>Monthly generation</span>
+              <span>{ui.monthlyGeneration}</span>
               <span>0 / 20</span>
             </div>
             <div className="usage-bar">
               <span style={{ width: "4%" }} />
             </div>
-            <small>Demo mode is unlimited</small>
+            <small>{ui.demoUnlimited}</small>
           </div>
           <button className="help-link">
-            <span>?</span> Help center
+            <span>?</span> {ui.helpCenter}
           </button>
           <div className="version">
             ToyPost Studio <span>v1.0</span>
@@ -578,26 +646,45 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb">
-            <span>{activeNav === "media" ? "AI Media Lab" : activeNav === "tools" ? "AI Toolchain" : activeNav === "source" ? "YouTube source" : activeNav === "channel" ? "Channel setup" : "New post"}</span>
+            <span>{breadcrumbParent}</span>
             <i>/</i>
-            <strong>{activeNav === "media" ? "Dub and translate" : activeNav === "tools" ? "Choose your process" : activeNav === "source" ? "Import your own video" : activeNav === "channel" ? "Connections" : "Generate a video"}</strong>
+            <strong>{breadcrumbCurrent}</strong>
           </div>
           <div className="top-actions">
+            <div className="language-switcher" role="group" aria-label={ui.language}>
+              <span className="language-switcher-label">{ui.language}</span>
+              <button
+                type="button"
+                className={uiLanguage === "en" ? "active" : ""}
+                aria-pressed={uiLanguage === "en"}
+                onClick={() => setUiLanguage("en")}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                className={uiLanguage === "km" ? "active" : ""}
+                aria-pressed={uiLanguage === "km"}
+                onClick={() => setUiLanguage("km")}
+              >
+                ខ្មែរ
+              </button>
+            </div>
             <div
               className={`status-pill ${health.youtubeConnected ? "connected" : ""}`}
-              title={health.youtubeError || health.youtubeChannel?.title || "YouTube connection status"}
+              title={health.youtubeError || health.youtubeChannel?.title || ui.youtubeStatus}
             >
               <span className="status-dot" />
               {health.youtubeConnected
-                ? "YouTube connected"
-                : "YouTube not connected"}
+                ? ui.youtubeConnected
+                : ui.youtubeNotConnected}
             </div>
-            <button className="icon-button" aria-label="Notifications">
+            <button className="icon-button" aria-label={ui.notifications}>
               ♢
             </button>
             <button
               className="icon-button refresh-button"
-              aria-label="Refresh connection status"
+              aria-label={ui.refreshStatus}
               onClick={() => loadWorkspace().catch(() => setNotice({ type: "error", text: "Could not refresh the connection status." }))}
             >
               ↻
