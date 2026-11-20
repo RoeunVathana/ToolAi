@@ -16,7 +16,9 @@ Without credentials, the app runs in demo mode so the interface can be explored 
 
 The AI Media Lab adds the same production steps shown in the reference workflow: AI subtitles, translation, dubbing, and realistic voice. Choose AI Media Lab in the sidebar, upload an MP4, select the source and target language, and process it. Khmer (`km` / ខ្មែរ) is supported as a target voice language. With `GEMINI_API_KEY`, Gemini can transcribe the uploaded media, translate the caption segments, and generate a voice track using `GEMINI_MEDIA_MODEL` and `GEMINI_TTS_MODEL`. The result is a processed MP4 plus an SRT file and is automatically available in the publishing panel. Without the key, demo mode creates timed captions from an optional pasted transcript and keeps the original audio; it does not pretend to create a translation or voice track.
 
-FFmpeg and FFprobe must be available on the server for subtitle burn-in, voice mixing, video normalization, and YouTube/Facebook rendering. If FFmpeg is unavailable, the app still returns the sidecar SRT and preserves the source video, but it cannot burn captions into the MP4.
+The AI Toolchain page adds a seven-step checklist: creative brief, script and metadata, video and sound, Khmer voice, captions and translation, quality review, and publishing. Each step links to the correct workspace screen and reports whether it is ready, waiting, demo-only, or needs a provider key.
+
+The app bundles FFmpeg and FFprobe through `ffmpeg-static` and `ffprobe-static` for subtitle burn-in, voice mixing, video normalization, and YouTube/Facebook rendering. On a deployment platform that cannot run the bundled binaries, the app still returns the sidecar SRT and preserves the source video, but it cannot burn captions into the MP4.
 
 You can also choose an existing MP4, MOV, or WebM in the upload panel. This is useful when a video was generated outside ToyPost or when you want to review a manually edited cut. The destination buttons stay disabled until a real video and the matching verified channel/Page are available.
 

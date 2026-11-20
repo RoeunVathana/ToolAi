@@ -11,6 +11,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { google } from "googleapis";
 import { GoogleGenAI } from "@google/genai";
+import ffmpegStatic from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
@@ -29,6 +31,8 @@ const geminiRequestTimeout = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS || 200
 const geminiVideoRequestTimeout = Number(process.env.GEMINI_VIDEO_REQUEST_TIMEOUT_MS || 30000);
 const geminiVideoJobTimeout = Number(process.env.GEMINI_VIDEO_JOB_TIMEOUT_MS || 360000);
 const ffmpegThreads = String(Math.max(1, Number(process.env.FFMPEG_THREADS || 2)));
+const ffmpegCommand = process.env.FFMPEG_PATH || ffmpegStatic || "ffmpeg";
+const ffprobeCommand = process.env.FFPROBE_PATH || ffprobeStatic?.path || "ffprobe";
 const generationJobs = new Map();
 
 const uploadMiddleware = multer({
@@ -485,6 +489,24 @@ function createDemoScenes(sceneCount, duration) {
   });
 }
 
+async function ensureDemoPreviewVideo() {
+  const filename = "toypost-demo-preview.mp4";
+  const outputPath = path.join(generatedDir, filename);
+  if (fsSync.existsSync(outputPath)) return `/generated/${filename}`;
+  try {
+    await execFileAsync(ffmpegCommand, [
+      "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30",
+      "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "16",
+      "-c:v", "libx264", "-preset", "veryfast", "-threads", ffmpegThreads,
+      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+      "-movflags", "+faststart", outputPath,
+    ]);
+    return `/generated/${filename}`;
+  } catch {
+    return null;
+  }
+}
+
 function findVideoContent(interaction) {
   if (interaction.output_video) return interaction.output_video;
   return interaction.steps
@@ -638,7 +660,7 @@ function resolveGeneratedPath(videoUrl) {
 
 async function hasAudioStream(filePath) {
   try {
-    const { stdout } = await execFileAsync("ffprobe", ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", filePath]);
+    const { stdout } = await execFileAsync(ffprobeCommand, ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", filePath]);
     return Boolean(stdout.trim());
   } catch {
     return true;
@@ -657,7 +679,7 @@ async function renderVideo(inputPath, outputPath, format, inputHasAudio = true) 
     "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-shortest", outputPath,
   );
   try {
-    await execFileAsync("ffmpeg", args);
+    await execFileAsync(ffmpegCommand, args);
   } catch (error) {
     if (error.code === "ENOENT") throw new Error("FFmpeg and ffprobe are required to render the final video.");
     throw new Error(error.stderr || "FFmpeg could not render the final video.");
@@ -673,7 +695,7 @@ function parseMediaSeconds(value, fallback = 0) {
 
 async function getMediaDuration(filePath) {
   try {
-    const { stdout } = await execFileAsync("ffprobe", [
+    const { stdout } = await execFileAsync(ffprobeCommand, [
       "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", filePath,
     ]);
     const duration = Number(stdout.trim());
@@ -826,7 +848,7 @@ function escapeSubtitleFilterPath(filePath) {
 
 async function burnSubtitles(inputPath, outputPath, subtitlePath) {
   try {
-    await execFileAsync("ffmpeg", [
+    await execFileAsync(ffmpegCommand, [
       "-y", "-i", inputPath, "-vf", `subtitles=${escapeSubtitleFilterPath(subtitlePath)}:force_style='FontName=Arial,FontSize=20,Outline=2,Shadow=1,Alignment=2'`,
       "-map", "0:v:0", "-map", "0:a:0?", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", outputPath,
     ]);
@@ -880,7 +902,7 @@ async function mixVoiceover(inputPath, voicePath, outputPath) {
   }
   args.push("-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-shortest", outputPath);
   try {
-    await execFileAsync("ffmpeg", args);
+    await execFileAsync(ffmpegCommand, args);
   } catch (error) {
     if (error.code === "ENOENT") throw new Error("FFmpeg is required to add the generated voice track.");
     throw new Error(error.stderr || "FFmpeg could not add the generated voice track.");
@@ -902,7 +924,7 @@ async function stitchScenes(videoUrls, format = "youtube") {
   const manifest = scenePaths.map((scenePath) => `file '${scenePath.replaceAll("'", "'\\''")}'`).join("\n");
   await fs.writeFile(manifestPath, manifest, "utf8");
   try {
-    await execFileAsync("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", manifestPath, "-c:v", "libx264", "-preset", "veryfast", "-threads", ffmpegThreads, "-c:a", "aac", "-ar", "48000", "-ac", "2", sourcePath]);
+    await execFileAsync(ffmpegCommand, ["-y", "-f", "concat", "-safe", "0", "-i", manifestPath, "-c:v", "libx264", "-preset", "veryfast", "-threads", ffmpegThreads, "-c:a", "aac", "-ar", "48000", "-ac", "2", sourcePath]);
     return await renderVideo(sourcePath, outputPath, format, await hasAudioStream(sourcePath));
   } catch (error) {
     if (error.code === "ENOENT") throw new Error("FFmpeg and ffprobe are required to stitch the generated scenes.");
@@ -1177,14 +1199,21 @@ function pruneGenerationJobs() {
   }
 }
 
+function isFreeTierVideoLimitError(error) {
+  const message = String(error?.message || error || "");
+  return /free tier limit:\s*0|not available on free tier/i.test(message)
+    && /video|gemini-omni|veo/i.test(message);
+}
+
 function serializeGenerationJob(job) {
   return {
-    mode: "gemini",
+    mode: job.mode || "gemini",
     jobId: job.id,
     status: job.status,
     storyPlan: job.storyPlan || null,
     warning: job.warning || null,
     scenes: job.scenes || [],
+    previewVideoUrl: job.previewVideoUrl || null,
     totalDuration: job.totalDuration || 0,
     sceneCount: job.sceneCount || 0,
     error: job.error || null,
@@ -1224,7 +1253,22 @@ function startGenerationJob(payload) {
     try {
       Object.assign(job, await generateGeminiScenes(payload), { status: "completed", updatedAt: Date.now() });
     } catch (error) {
-      Object.assign(job, { status: "failed", error: error.message || "Video generation failed.", updatedAt: Date.now() });
+      if (isFreeTierVideoLimitError(error)) {
+        const scenes = createDemoScenes(payload.sceneCount, payload.duration);
+        const previewVideoUrl = await ensureDemoPreviewVideo();
+        Object.assign(job, {
+          mode: "demo",
+          status: "completed",
+          warning: "Gemini video generation is not available on the free tier, so ToyPost returned a free demo preview. Upload an MP4 or enable API billing for real clips.",
+          scenes,
+          previewVideoUrl,
+          totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0),
+          sceneCount: scenes.length,
+          updatedAt: Date.now(),
+        });
+      } else {
+        Object.assign(job, { status: "failed", error: error.message || "Video generation failed.", updatedAt: Date.now() });
+      }
     }
   })();
   return job;
@@ -1246,7 +1290,8 @@ app.post("/api/generate", async (req, res) => {
     }
     if (!hasGeminiConfig()) {
       const scenes = createDemoScenes(sceneCount, duration);
-      return res.json({ mode: "demo", message: "Demo scenes ready. Add GEMINI_API_KEY to generate real Gemini clips.", scenes, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
+      const previewVideoUrl = await ensureDemoPreviewVideo();
+      return res.json({ mode: "demo", message: "Demo scenes ready. Add GEMINI_API_KEY to generate real Gemini clips.", scenes, previewVideoUrl, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
     }
     const job = startGenerationJob({ prompt, sceneCount, duration, textProvider, suppliedStoryPlan });
     return res.status(202).json(serializeGenerationJob(job));

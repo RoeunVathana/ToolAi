@@ -75,6 +75,7 @@ function App() {
   const [duration, setDuration] = useState(60);
   const [sceneCount, setSceneCount] = useState(4);
   const [scenes, setScenes] = useState([]);
+  const [demoPreviewUrl, setDemoPreviewUrl] = useState(null);
   const [storyPlan, setStoryPlan] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPlanning, setIsPlanning] = useState(false);
@@ -205,6 +206,7 @@ function App() {
         throw new Error(data.error || "Video generation failed.");
       if (data.jobId) data = await waitForGeneration(data.jobId);
       setScenes(data.scenes || []);
+      setDemoPreviewUrl(data.previewVideoUrl || null);
       if (data.storyPlan) {
         setStoryPlan(data.storyPlan);
         setForm((current) => ({
@@ -418,6 +420,12 @@ function App() {
     }
   }
 
+  function openMediaLab(nextMode = "both", targetLanguage = "km") {
+    setMediaMode(nextMode);
+    setMediaTargetLanguage(targetLanguage);
+    setActiveNav("media");
+  }
+
   const hasRealVideo = Boolean(localVideoFile || processedVideoUrl || scenes.some((scene) => scene.videoUrl));
   const publishVideoUrls = processedVideoUrl
     ? [processedVideoUrl]
@@ -474,6 +482,12 @@ function App() {
             <span className="nav-icon">◌</span> AI Media Lab <span className="nav-badge">AI</span>
           </button>
           <button
+            className={activeNav === "tools" ? "nav-item active" : "nav-item"}
+            onClick={() => setActiveNav("tools")}
+          >
+            <span className="nav-icon">⌘</span> AI Toolchain
+          </button>
+          <button
             className={activeNav === "channel" ? "nav-item active" : "nav-item"}
             onClick={() => setActiveNav("channel")}
           >
@@ -504,9 +518,9 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="breadcrumb">
-            <span>{activeNav === "media" ? "AI Media Lab" : activeNav === "channel" ? "Channel setup" : "New post"}</span>
+            <span>{activeNav === "media" ? "AI Media Lab" : activeNav === "tools" ? "AI Toolchain" : activeNav === "channel" ? "Channel setup" : "New post"}</span>
             <i>/</i>
-            <strong>{activeNav === "media" ? "Dub and translate" : activeNav === "channel" ? "Connections" : "Generate a video"}</strong>
+            <strong>{activeNav === "media" ? "Dub and translate" : activeNav === "tools" ? "Choose your process" : activeNav === "channel" ? "Connections" : "Generate a video"}</strong>
           </div>
           <div className="top-actions">
             <div
@@ -533,11 +547,18 @@ function App() {
         </header>
 
         <div className="page-wrap">
-          <section className="page-heading">
+          <section className={`page-heading ${activeNav}-page`}>
             <div>
-              <p className="eyebrow">{activeNav === "media" ? "PREPARE YOUR MEDIA" : activeNav === "channel" ? "PUBLISHING CONNECTIONS" : "CREATE A NEW POST"}</p>
+              <p className="eyebrow">{activeNav === "media" ? "PREPARE YOUR MEDIA" : activeNav === "tools" ? "AI PRODUCTION WORKFLOW" : activeNav === "channel" ? "PUBLISHING CONNECTIONS" : "CREATE A NEW POST"}</p>
               <h1>{activeNav === "media" ? <>Make one video work in <em>every language.</em></> : activeNav === "channel" ? <>Choose where your <em>video goes.</em></> : <>Turn a toy idea into a <em>YouTube video.</em></>}</h1>
               <p className="heading-copy">{activeNav === "media" ? "Create subtitles, translations, and a realistic voice track, then keep using the same publishing workflow." : activeNav === "channel" ? "Switch the YouTube channel or Facebook Page used by your next upload." : "Describe the playset adventure you want to make. ToyPost turns it into a bright, original video that is ready for review."}</p>
+              {activeNav === "tools" && (
+                <div className="toolchain-heading-override">
+                  <p className="eyebrow">AI PRODUCTION WORKFLOW</p>
+                  <h1>Build faster with an <em>AI toolchain.</em></h1>
+                  <p className="heading-copy">Pick the right AI tool for each stage, then move the finished video into one publishing workflow.</p>
+                </div>
+              )}
             </div>
             <div className="heading-badge">
               <span className="sparkle">✦</span>
@@ -564,6 +585,20 @@ function App() {
 
           {activeNav === "library" ? (
             <LibraryView library={library} onNew={() => setActiveNav("new")} />
+          ) : activeNav === "tools" ? (
+            <AiToolchainView
+              health={health}
+              textProviders={textProviders}
+              videoProviders={videoProviders}
+              textProvider={textProvider}
+              setTextProvider={setTextProvider}
+              videoProvider={videoProvider}
+              setVideoProvider={setVideoProvider}
+              onOpenComposer={() => setActiveNav("new")}
+              onOpenMedia={openMediaLab}
+              onOpenChannels={() => setActiveNav("channel")}
+              hasVideo={hasRealVideo}
+            />
           ) : activeNav === "media" ? (
             <MediaLabView
               health={health}
@@ -778,30 +813,34 @@ function App() {
                   ) : (
                     <>
                       <div className="video-preview">
-                        <div className="preview-art">
-                          <div className="art-orbit orbit-one" />
-                          <div className="art-orbit orbit-two" />
-                          <div className="toy-kitchen">
-                            <div className="toy-roof" />
-                            <div className="toy-counter">
-                              <span />
-                              <span />
-                              <span />
+                        {demoPreviewUrl ? (
+                          <video className="demo-video" controls preload="metadata" src={demoPreviewUrl} />
+                        ) : (
+                          <div className="preview-art">
+                            <div className="art-orbit orbit-one" />
+                            <div className="art-orbit orbit-two" />
+                            <div className="toy-kitchen">
+                              <div className="toy-roof" />
+                              <div className="toy-counter">
+                                <span />
+                                <span />
+                                <span />
+                              </div>
+                              <div className="toy-oven" />
                             </div>
-                            <div className="toy-oven" />
+                            <div className="toy-truck">
+                              <div className="truck-cab" />
+                              <div className="truck-body" />
+                              <div className="truck-wheel wheel-a" />
+                              <div className="truck-wheel wheel-b" />
+                            </div>
+                            <div className="preview-play">▶</div>
+                            <span className="preview-duration">
+                              {Math.floor(totalDuration / 60)}:
+                              {String(totalDuration % 60).padStart(2, "0")}
+                            </span>
                           </div>
-                          <div className="toy-truck">
-                            <div className="truck-cab" />
-                            <div className="truck-body" />
-                            <div className="truck-wheel wheel-a" />
-                            <div className="truck-wheel wheel-b" />
-                          </div>
-                          <div className="preview-play">▶</div>
-                          <span className="preview-duration">
-                            {Math.floor(totalDuration / 60)}:
-                            {String(totalDuration % 60).padStart(2, "0")}
-                          </span>
-                        </div>
+                        )}
                         <div className="preview-meta">
                           <div>
                             <strong>{form.title}</strong>
@@ -810,7 +849,7 @@ function App() {
                             </span>
                           </div>
                           <button
-                            onClick={() => setScenes([])}
+                            onClick={() => { setScenes([]); setDemoPreviewUrl(null); }}
                             aria-label="Clear preview"
                           >
                             ⌫
@@ -1129,6 +1168,181 @@ function EmptyPreview({ onGenerate }) {
         Generate preview <span>✦</span>
       </button>
     </div>
+  );
+}
+
+function AiToolchainView({
+  health,
+  textProviders,
+  videoProviders,
+  textProvider,
+  setTextProvider,
+  videoProvider,
+  setVideoProvider,
+  onOpenComposer,
+  onOpenMedia,
+  onOpenChannels,
+  hasVideo,
+}) {
+  const mediaReady = Boolean(health.aiProviders?.media?.configured || health.geminiConfigured);
+  const publishReady = Boolean(health.youtubeConnected || health.facebookConnected);
+  const youtubeLabel = health.youtubeChannel?.title || "YouTube channel not connected";
+  const facebookLabel = health.facebookPage?.name || "Facebook Page not connected";
+  const plannerReady = Boolean(textProviders.find((provider) => provider.id === textProvider)?.configured);
+  const videoReady = videoProvider === "external-upload" || health.geminiConfigured;
+  const pipelineSteps = [
+    { number: "01", title: "Creative brief", detail: "Prompt and audience", status: "READY", tone: "ready", action: "Open brief", onClick: onOpenComposer },
+    { number: "02", title: "Script + metadata", detail: "Title, tags, scene plan", status: plannerReady ? "READY" : "KEY NEEDED", tone: plannerReady ? "ready" : "setup", action: "Open planner", onClick: onOpenComposer },
+    { number: "03", title: "Video + sound", detail: "Scenes and audio direction", status: videoReady ? "READY" : "DEMO", tone: videoReady ? "ready" : "demo", action: "Open generator", onClick: onOpenComposer },
+    { number: "04", title: "Khmer voice", detail: "Natural Cambodian narration", status: mediaReady ? "READY" : "KEY NEEDED", tone: mediaReady ? "ready" : "setup", action: "Open voice lab", onClick: () => onOpenMedia("dub", "km") },
+    { number: "05", title: "Captions + translation", detail: "SRT and translated subtitles", status: mediaReady ? "READY" : "KEY NEEDED", tone: mediaReady ? "ready" : "setup", action: "Open captions", onClick: () => onOpenMedia("translate", "en") },
+    { number: "06", title: "Quality review", detail: "Preview, audio, and export", status: hasVideo ? "READY" : "WAITING", tone: hasVideo ? "ready" : "waiting", action: "Review video", onClick: onOpenComposer },
+    { number: "07", title: "Publish", detail: "YouTube and Facebook", status: publishReady ? "READY" : "CONNECT", tone: publishReady ? "ready" : "setup", action: "Manage destinations", onClick: onOpenChannels },
+  ];
+  const completedSteps = pipelineSteps.filter((step) => step.tone === "ready" || step.tone === "demo").length;
+
+  return (
+    <section className="toolchain-view card">
+      <div className="toolchain-hero">
+        <div>
+          <span className="step-label">AI TOOLCHAIN</span>
+          <h2>One workflow, several AI tools</h2>
+          <p>Choose the best tool for each stage, keep the video in one place, and publish when the result is ready.</p>
+        </div>
+        <span className={`mode-label ${health.geminiConfigured ? "live" : "demo"}`}>
+          {health.geminiConfigured ? "LIVE PROVIDERS" : "SETUP NEEDED"}
+        </span>
+      </div>
+
+      <div className="toolchain-steps" aria-label="AI production steps">
+        <span className="toolchain-step active"><b>01</b> Plan</span>
+        <i aria-hidden="true">→</i>
+        <span className="toolchain-step"><b>02</b> Generate</span>
+        <i aria-hidden="true">→</i>
+        <span className="toolchain-step"><b>03</b> Localize</span>
+        <i aria-hidden="true">→</i>
+        <span className="toolchain-step"><b>04</b> Publish</span>
+      </div>
+
+      <div className="toolchain-grid">
+        <section className="toolchain-card">
+          <div className="toolchain-card-icon">✦</div>
+          <div className="toolchain-card-heading">
+            <div>
+              <span className="step-label">01 · PLAN</span>
+              <h3>Script & metadata</h3>
+            </div>
+            <span className="toolchain-status">READY</span>
+          </div>
+          <p>Create a title, description, tags, scene prompts, and sound directions before you generate.</p>
+          <label className="provider-field">
+            <span>Planner</span>
+            <select value={textProvider} onChange={(event) => setTextProvider(event.target.value)}>
+              {textProviders.map((provider) => (
+                <option key={provider.id} value={provider.id} disabled={!provider.configured}>
+                  {provider.label}{provider.configured ? "" : " · setup needed"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="secondary-button toolchain-action" onClick={onOpenComposer}>Open story planner</button>
+        </section>
+
+        <section className="toolchain-card">
+          <div className="toolchain-card-icon coral">◉</div>
+          <div className="toolchain-card-heading">
+            <div>
+              <span className="step-label">02 · GENERATE</span>
+              <h3>Video + sound</h3>
+            </div>
+            <span className={`toolchain-status ${videoProvider === "external-upload" ? "external" : ""}`}>
+              {videoProvider === "external-upload" ? "MP4 IMPORT" : health.geminiConfigured ? "READY" : "DEMO"}
+            </span>
+          </div>
+          <p>Use Gemini for synchronized audio directions, or create an MP4 in another AI tool and bring it here.</p>
+          <label className="provider-field">
+            <span>Video tool</span>
+            <select value={videoProvider} onChange={(event) => setVideoProvider(event.target.value)}>
+              {videoProviders.map((provider) => (
+                <option key={provider.id} value={provider.id} disabled={!provider.configured}>
+                  {provider.label}{provider.configured ? "" : " · setup needed"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="secondary-button toolchain-action" onClick={onOpenComposer}>Open video generator</button>
+        </section>
+
+        <section className="toolchain-card">
+          <div className="toolchain-card-icon green">♫</div>
+          <div className="toolchain-card-heading">
+            <div>
+              <span className="step-label">03 · LOCALIZE</span>
+              <h3>Khmer voice & subtitles</h3>
+            </div>
+            <span className={`toolchain-status ${mediaReady ? "" : "external"}`}>
+              {mediaReady ? "READY" : "KEY NEEDED"}
+            </span>
+          </div>
+          <p>Upload any MP4, create Khmer speech, translate the script, and export a finished video with captions.</p>
+          <div className="toolchain-inline-actions">
+            <button className="secondary-button" onClick={() => onOpenMedia("both", "km")}>Khmer dubbing</button>
+            <button className="secondary-button" onClick={() => onOpenMedia("translate", "en")}>Translate + subtitles</button>
+          </div>
+        </section>
+
+        <section className="toolchain-card">
+          <div className="toolchain-card-icon purple">↗</div>
+          <div className="toolchain-card-heading">
+            <div>
+              <span className="step-label">04 · PUBLISH</span>
+              <h3>YouTube & Facebook</h3>
+            </div>
+            <span className={`toolchain-status ${publishReady ? "" : "external"}`}>
+              {publishReady ? "CONNECTED" : "CONNECT"}
+            </span>
+          </div>
+          <p>Keep publishing settings in one place and switch the destination before each upload.</p>
+          <div className="toolchain-connections">
+            <span><b>YouTube</b>{youtubeLabel}</span>
+            <span><b>Facebook</b>{facebookLabel}</span>
+          </div>
+          <button className="secondary-button toolchain-action" onClick={onOpenChannels}>Manage channels and Pages</button>
+        </section>
+      </div>
+
+      <section className="process-panel" aria-labelledby="process-panel-title">
+        <div className="process-panel-heading">
+          <div>
+            <span className="step-label">FULL PRODUCTION CHECKLIST</span>
+            <h3 id="process-panel-title">Seven steps from idea to upload</h3>
+          </div>
+          <span className="process-progress-label">{completedSteps} / {pipelineSteps.length} ready</span>
+        </div>
+        <div className="process-progress" aria-label={`${completedSteps} of ${pipelineSteps.length} steps ready`}>
+          <span style={{ width: `${(completedSteps / pipelineSteps.length) * 100}%` }} />
+        </div>
+        <div className="process-list">
+          {pipelineSteps.map((step) => (
+            <div className={`process-row ${step.tone}`} key={step.number}>
+              <span className="process-number">{step.number}</span>
+              <span className="process-check">{step.tone === "ready" ? "✓" : step.tone === "demo" ? "•" : "○"}</span>
+              <span className="process-copy">
+                <strong>{step.title}</strong>
+                <small>{step.detail}</small>
+              </span>
+              <span className="process-status">{step.status}</span>
+              <button className="process-action" onClick={step.onClick}>{step.action}</button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="toolchain-note">
+        <span>i</span>
+        <p><strong>How “another AI tool” works:</strong> create the video with that provider, export an MP4, then choose “Use an existing video” in New post. This keeps the workflow reliable without pretending an unconnected provider is already integrated.</p>
+      </div>
+    </section>
   );
 }
 
