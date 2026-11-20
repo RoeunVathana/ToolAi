@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+server/data
+server/generated
+server/incoming
+*.mp4
+*.mov
+*.webm
