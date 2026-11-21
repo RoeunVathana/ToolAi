@@ -31,6 +31,8 @@ const execFileAsync = promisify(execFile);
 const facebookGraphVersion = process.env.FB_GRAPH_VERSION || "v27.0";
 const geminiApiVersion = process.env.GEMINI_API_VERSION || "v1beta";
 const geminiRequestTimeout = Number(process.env.GEMINI_REQUEST_TIMEOUT_MS || 20000);
+const geminiMediaRequestTimeout = Number(process.env.GEMINI_MEDIA_REQUEST_TIMEOUT_MS || 180000);
+const geminiMediaProcessingTimeout = Number(process.env.GEMINI_MEDIA_PROCESSING_TIMEOUT_MS || 600000);
 const geminiVideoRequestTimeout = Number(process.env.GEMINI_VIDEO_REQUEST_TIMEOUT_MS || 30000);
 const geminiVideoJobTimeout = Number(process.env.GEMINI_VIDEO_JOB_TIMEOUT_MS || 360000);
 const ffmpegThreads = String(Math.max(1, Number(process.env.FFMPEG_THREADS || 2)));
@@ -923,10 +925,10 @@ function normalizeMediaSegments(value, duration, fallbackText) {
   return segments.length ? segments : createDemoMediaSegments(fallbackText, duration);
 }
 
-async function waitForGeminiFile(ai, uploaded) {
+async function waitForGeminiFile(ai, uploaded, timeoutMs = geminiMediaProcessingTimeout) {
   if (!uploaded?.name || uploaded.state !== "PROCESSING") return uploaded;
   let file = uploaded;
-  const deadline = Date.now() + 180000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     file = await ai.files.get({ name: uploaded.name });
@@ -937,7 +939,7 @@ async function waitForGeminiFile(ai, uploaded) {
 }
 
 async function createGeminiMediaSegments({ filePath, mimeType, transcript, sourceLanguage, targetLanguage, duration }) {
-  const ai = createGeminiClient();
+  const ai = createGeminiClient({ timeout: geminiMediaRequestTimeout });
   const model = process.env.GEMINI_MEDIA_MODEL || process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
   const translationRequest = targetLanguage && targetLanguage !== "auto" && targetLanguage !== sourceLanguage
     ? `Translate every caption into ${mediaLanguageLabel(targetLanguage)}. Keep the meaning natural and concise.`
