@@ -289,3 +289,88 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
   .tool-card-art { height: 145px; }
   .button.primary, .button.secondary { min-height: 45px; }
 }
+
+/* Cross-device layout safeguards. The workspace becomes an off-canvas app
+   before tablet widths so content never competes with a permanent sidebar. */
+html, body, #root { max-width: 100%; overflow-x: hidden; }
+img, video, audio { max-width: 100%; }
+
+@media (max-width: 1100px) {
+  .page-content { width: min(100% - 48px, 960px); }
+  .topbar { padding: 0 28px; }
+  .sidebar { width: 232px; flex-basis: 232px; }
+  .tool-grid { gap: 12px; }
+  .timeline-grid { grid-template-columns: 280px minmax(0, 1fr); }
+  .recap-reference-grid { grid-template-columns: 280px minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .studio-shell { display: block; }
+  .main-area { width: 100%; min-width: 0; }
+  .sidebar { position: fixed; z-index: 30; left: 0; top: 0; width: min(300px, 88vw); height: 100dvh; flex-basis: auto; transform: translateX(-105%); transition: transform .22s ease; box-shadow: 22px 0 55px rgba(0, 0, 0, .35); }
+  .sidebar.open { transform: translateX(0); }
+  .menu-trigger, .mobile-close { display: grid; }
+  .topbar { height: 68px; padding: 0 24px; }
+  .page-content { width: min(100% - 48px, 820px); padding-top: 42px; }
+  .page-intro, .wizard-heading { align-items: flex-start; gap: 18px; }
+  .page-intro h1, .wizard-heading h1 { font-size: clamp(32px, 5vw, 46px); }
+  .stats-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .voice-studio-grid, .timeline-grid, .recap-reference-grid, .publisher-grid { grid-template-columns: 1fr; }
+  .timeline-sidebar, .recap-reference-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .voice-history-panel { min-height: auto; }
+  .analytics-grid, .settings-card-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .topbar { height: 62px; padding: 0 14px; }
+  .topbar-actions { gap: 4px; }
+  .top-avatar { width: 32px; height: 32px; }
+  .page-content { width: calc(100% - 28px); padding-top: 30px; padding-bottom: 56px; }
+  .breadcrumbs strong { max-width: 43vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .page-intro { display: grid; gap: 17px; margin-bottom: 28px; }
+  .page-intro .button { width: 100%; }
+  .page-intro h1, .wizard-heading h1 { font-size: 32px; }
+  .stats-row { gap: 8px; margin-bottom: 34px; }
+  .stat-card { min-height: 78px; padding: 12px; }
+  .stat-card strong { font-size: 18px; }
+  .tool-grid, .upload-zones, .form-grid, .form-grid.three, .voice-form-grid, .voice-upload-grid, .settings-options { grid-template-columns: 1fr; max-width: none; }
+  .tool-card-art { height: 136px; }
+  .tool-card-copy { min-height: 0; padding: 17px; }
+  .section-heading { gap: 10px; }
+  .section-heading h2 { font-size: 18px; }
+  .project-row { align-items: stretch; flex-wrap: wrap; }
+  .project-row-main { min-width: 0; width: 100%; min-height: 65px; padding: 11px 12px 5px; }
+  .project-row-actions { width: 100%; justify-content: flex-end; padding: 0 11px 10px; }
+  .project-row-edit, .project-row-delete { min-height: 28px; }
+  .step-content, .voice-compose, .voice-history-panel, .timeline-summary, .selected-voice-card, .timeline-video-card, .subtitle-card, .timeline-action-card, .timeline-history, .publisher-card, .analytics-panel, .settings-panel { padding: 17px; }
+  .step-heading { gap: 10px; margin-bottom: 22px; }
+  .step-heading h2 { font-size: 19px; }
+  .wizard-steps { margin-inline: -4px; padding-bottom: 3px; }
+  .wizard-steps button { min-width: 82px; }
+  .voice-actions, .voice-current-actions, .timeline-action-footer { align-items: stretch; flex-direction: column; }
+  .voice-actions .button, .voice-current-actions .button, .timeline-action-footer .button { width: 100%; justify-content: center; }
+  .timeline-sidebar, .recap-reference-sidebar { grid-template-columns: 1fr; }
+  .timeline-upload-row { align-items: stretch; flex-direction: column; }
+  .compact-picker, .recap-file-button { max-width: none; width: 100%; }
+  .timeline-video-card .voice-section-heading, .recap-panel-heading { align-items: stretch; flex-direction: column; }
+  .recap-reference-header { padding: 15px; }
+  .recap-reference-brand strong { font-size: 17px; }
+  .recap-reference-actions { width: 100%; }
+  .recap-reference-actions button { flex: 1; justify-content: center; }
+  .recap-reference-subbar { padding-top: 15px; }
+  .recap-stats { gap: 5px; }
+  .recap-stats div { min-height: 58px; padding-inline: 3px; }
+  .recap-panel-heading h2 { font-size: 17px; }
+  .analytics-project-row .status-badge, .analytics-project-row .project-date { display: none; }
+}
+
+@media (max-width: 380px) {
+  .language-toggle { min-width: 0; padding-inline: 8px; font-size: 10px; }
+  .breadcrumbs strong { max-width: 35vw; }
+  .stat-card { padding: 9px; }
+  .stat-card span { font-size: 10px; }
+  .stat-card strong { font-size: 16px; }
+  .project-thumb { width: 34px; height: 34px; }
+  .project-row-name strong { font-size: 12px; }
+  .button { padding-inline: 12px; }
+}
