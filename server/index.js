@@ -533,7 +533,7 @@ async function createDemoMediaOutput({ inputPath, includeSubtitles, targetLangua
   const duration = await getMediaDuration(inputPath);
   const segments = normalizeMediaSegments(null, duration, transcript);
   let subtitlePath = null;
-  if (includeSubtitles) {
+  if (includeSubtitles && segments.length) {
     subtitlePath = path.join(generatedDir, `toypost-captions-${Date.now()}.srt`);
     await writeSrt(segments, subtitlePath);
   }
@@ -904,9 +904,8 @@ function splitCaptionText(text) {
 
 function createDemoMediaSegments(transcript, duration) {
   const parts = splitCaptionText(transcript);
-  const lines = parts.length
-    ? parts
-    : ["Demo caption: add a transcript or connect Gemini for automatic captions."];
+  const lines = parts;
+  if (!lines.length) return [];
   const slot = Math.max(2, duration / lines.length);
   return lines.map((text, index) => ({
     start: Number((index * slot).toFixed(2)),
@@ -1578,7 +1577,7 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
       : normalizeMediaSegments(null, duration, transcript);
     const warnings = [];
     if (!usingGemini) {
-      warnings.push("Demo mode created a timed caption preview. Add GEMINI_API_KEY for automatic transcription, translation, and realistic voice.");
+      warnings.push("No automatic captions were generated. Paste your own transcript, or configure Gemini for real transcription and translation.");
     }
 
     if (extractOnly) {
@@ -1642,7 +1641,9 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     const normalized = normalizeProviderError(error, "Media processing failed.");
     if ((normalized.body.code === "GEMINI_QUOTA_EXHAUSTED" || isTransientGeminiError(error)) && tempInput && mediaOptions) {
       try {
-        const warning = `${normalized.body.error} Gemini is temporarily busy, so ToyPost created a local caption preview and kept the original audio.`;
+        const warning = mediaOptions.transcript
+          ? `${normalized.body.error} Gemini is temporarily busy, so the supplied transcript was kept as timed captions and the original audio was preserved.`
+          : `${normalized.body.error} No captions were generated and the original audio was preserved. You can paste your own transcript and try again later.`;
         if (mediaOptions.extractOnly) {
           const fallbackSegments = createDemoMediaSegments(mediaOptions.transcript, mediaOptions.duration);
           return res.json({
@@ -1651,7 +1652,7 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
             captionSegments: fallbackSegments,
             captions: fallbackSegments.length,
             language: mediaOptions.targetLanguage,
-            warnings: [warning],
+            warnings: [mediaOptions.transcript ? warning : `${normalized.body.error} No caption text was generated. Paste your own transcript and try again later.`],
           });
         }
         const fallback = await createDemoMediaOutput({

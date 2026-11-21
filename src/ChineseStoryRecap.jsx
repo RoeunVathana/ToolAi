@@ -83,7 +83,10 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme }) {
       form.append("translate", "true");
       const data = await request("/api/media/process", { method: "POST", body: form }, token);
       const extractedText = data.transcript || (data.captionSegments || []).map((segment) => segment.text).join("\n");
-      if (!extractedText.trim()) throw new Error("AI did not find spoken text in this video.");
+      if (!extractedText.trim()) {
+        setNotice(data.warnings?.[0] || "No transcript was returned. You can write or paste the source text yourself.");
+        return;
+      }
       setSourceText(extractedText.trim());
       setNotice(text(language, "videoTextReady", language === "km" ? "អត្ថបទពីវីដេអូរួចរាល់។ សូមពិនិត្យមុនបង្កើតសម្រាយ។" : "Video text is ready. Review it before generating the recap."));
     } catch (extractError) { setError(extractError.message); } finally { setExtractBusy(false); }
