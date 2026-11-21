@@ -228,22 +228,25 @@ async function facebookJson(url, options = {}) {
 }
 
 function getFacebookPageCredentials() {
-  if (process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN) {
-    return {
+  const requestedId = facebookAuth?.activePageId || process.env.FB_PAGE_ID;
+  return facebookAuth?.pages?.find((page) => page.access_token && (!requestedId || page.id === requestedId))
+    || facebookAuth?.pages?.find((page) => page.access_token)
+    || (process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN ? {
       id: process.env.FB_PAGE_ID,
       accessToken: process.env.FB_PAGE_ACCESS_TOKEN,
       name: process.env.FB_PAGE_NAME || "Configured Facebook Page",
-    };
-  }
-  const requestedId = facebookAuth?.activePageId || process.env.FB_PAGE_ID;
-  return (
-    facebookAuth?.pages?.find((page) => page.access_token && (!requestedId || page.id === requestedId)) ||
-    facebookAuth?.pages?.find((page) => page.access_token) ||
-    null
-  );
+    } : null);
 }
 
 function getFacebookPageOptions() {
+  const activeId = facebookAuth?.activePageId || facebookAuth?.pages?.[0]?.id || null;
+  const savedPages = (facebookAuth?.pages || []).map((page) => ({
+    id: page.id,
+    name: page.name || "Facebook Page",
+    active: page.id === activeId,
+    tasks: page.tasks || [],
+  }));
+  if (savedPages.length) return savedPages;
   if (process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN) {
     return [{
       id: process.env.FB_PAGE_ID,
@@ -252,13 +255,7 @@ function getFacebookPageOptions() {
       managedByEnvironment: true,
     }];
   }
-  const activeId = facebookAuth?.activePageId || facebookAuth?.pages?.[0]?.id || null;
-  return (facebookAuth?.pages || []).map((page) => ({
-    id: page.id,
-    name: page.name || "Facebook Page",
-    active: page.id === activeId,
-    tasks: page.tasks || [],
-  }));
+  return [];
 }
 
 // Phase 1 uses the same persisted OAuth connections as the original publisher.
@@ -278,6 +275,8 @@ function phase1PublishingConfig() {
       connected: youtubeConnected,
       canPublish: youtubeConfigured && youtubeConnected,
       label: "YouTube",
+      channels: getYoutubeAccountOptions(),
+      activeChannelId: getActiveYoutubeAccount()?.id || null,
       message: youtubeConfigured && youtubeConnected
         ? "A connected YouTube channel is ready for review and publication."
         : "Connect a YouTube channel to publish.",
@@ -287,6 +286,8 @@ function phase1PublishingConfig() {
       connected: facebookConnected,
       canPublish: facebookConfigured && facebookConnected,
       label: "Facebook Page",
+      pages: getFacebookPageOptions(),
+      activePageId: getFacebookPageCredentials()?.id || null,
       message: facebookConfigured && facebookConnected
         ? "A connected Facebook Page is ready for review and publication."
         : "Connect a Facebook Page to publish.",
@@ -1218,7 +1219,7 @@ app.post("/api/connections/youtube/active", async (req, res) => {
 
 app.post("/api/connections/facebook/active", async (req, res) => {
   const pageId = String(req.body?.pageId || "");
-  if (process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN) {
+  if (!facebookAuth?.pages?.length && process.env.FB_PAGE_ID && process.env.FB_PAGE_ACCESS_TOKEN) {
     return res.status(409).json({ error: "The Facebook Page is fixed by FB_PAGE_ID in the environment." });
   }
   const page = facebookAuth?.pages?.find((item) => item.id === pageId);

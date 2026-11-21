@@ -22,12 +22,19 @@ function jobClass(status) {
   return "";
 }
 
-function ProviderState({ provider }) {
+function ProviderState({ provider, onChange, busy }) {
   if (!provider) return <span className="publisher-provider unknown">Loading provider status…</span>;
   const label = provider.canPublish ? "Connected" : provider.connected ? "Needs verification" : "Not configured";
   const action = provider.canPublish ? "Reconnect" : "Connect";
   const href = provider.label === "YouTube" ? "/api/auth/youtube" : "/api/auth/facebook";
-  return <div className="publisher-provider-wrap"><span className={`publisher-provider ${provider.canPublish ? "ready" : "blocked"}`}><i />{label}</span><a className="publisher-connect" href={href}>{action}</a></div>;
+  const isYoutube = provider.label === "YouTube";
+  const options = isYoutube ? (provider.channels || []) : (provider.pages || []);
+  const activeId = isYoutube ? provider.activeChannelId : provider.activePageId;
+  return <div className="publisher-provider-wrap">
+    <div className="publisher-provider-line"><span className={`publisher-provider ${provider.canPublish ? "ready" : "blocked"}`}><i />{label}</span><a className="publisher-connect" href={href}>{action}</a></div>
+    {options.length > 0 && <label className="publisher-provider-selector"><span>{isYoutube ? "Publishing channel" : "Publishing Page"}</span><select value={activeId || ""} onChange={(event) => onChange(event.target.value)} disabled={busy || options.length < 2}>{options.map((option) => <option key={option.id} value={option.id}>{isYoutube ? option.title : option.name}{option.handle ? ` · ${option.handle}` : ""}</option>)}</select></label>}
+    {options.length > 1 && <span className="publisher-provider-hint">Change the destination used for new publications.</span>}
+  </div>;
 }
 
 export default function AutoPublisher({ onBack }) {
@@ -39,6 +46,7 @@ export default function AutoPublisher({ onBack }) {
   const [busy, setBusy] = useState(false);
   const [busyJob, setBusyJob] = useState("");
   const [demoBusy, setDemoBusy] = useState(false);
+  const [connectionBusy, setConnectionBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const completedProjects = useMemo(() => projects.filter((project) => project.renderJobs?.some((render) => render.status === "COMPLETED")), [projects]);
@@ -56,6 +64,19 @@ export default function AutoPublisher({ onBack }) {
   }
   useEffect(() => { load(); }, []);
   function setField(name, value) { setForm((current) => ({ ...current, [name]: value })); }
+
+  async function changeConnection(platform, id) {
+    if (!id) return;
+    setConnectionBusy(platform); setError(""); setNotice("");
+    try {
+      const path = platform === "YOUTUBE" ? "/api/connections/youtube/active" : "/api/connections/facebook/active";
+      const body = platform === "YOUTUBE" ? { accountId: id } : { pageId: id };
+      await request(path, { method: "POST", body: JSON.stringify(body) }, token);
+      const data = await request("/api/v1/publishing/config", {}, token);
+      setConfig(data.config || null);
+      setNotice(platform === "YOUTUBE" ? "YouTube publishing channel changed." : "Facebook publishing Page changed.");
+    } catch (switchError) { setError(switchError.message); } finally { setConnectionBusy(""); }
+  }
 
   async function createDemoProject() {
     setDemoBusy(true); setError(""); setNotice("");
@@ -94,7 +115,7 @@ export default function AutoPublisher({ onBack }) {
     <div className="page-intro compact publisher-intro"><div><span className="eyebrow">AUTO PUBLISHER</span><h1>Approve before it goes live.</h1><p>Queue a finished MP4, verify your rights, prepare platform metadata, and keep publication under your control.</p></div><div className="publisher-safety"><ShieldCheck size={17} /> Approval required</div></div>
     {error && <div className="alert error"><X size={16} />{error}<button onClick={() => setError("")}><X size={15} /></button></div>}
     {notice && <div className="alert success"><Check size={16} />{notice}<button onClick={() => setNotice("")}><X size={15} /></button></div>}
-    <div className="publisher-platforms"><div className="publisher-platform card"><div className="publisher-platform-icon youtube">▶</div><div><strong>YouTube</strong><span>Official channel upload</span></div><ProviderState provider={config?.youtube} /></div><div className="publisher-platform card"><div className="publisher-platform-icon facebook">f</div><div><strong>Facebook Page</strong><span>Page video or Reel</span></div><ProviderState provider={config?.facebook} /></div></div>
+    <div className="publisher-platforms"><div className="publisher-platform card"><div className="publisher-platform-icon youtube">▶</div><div><strong>YouTube</strong><span>Official channel upload</span></div><ProviderState provider={config?.youtube} onChange={(id) => changeConnection("YOUTUBE", id)} busy={connectionBusy === "YOUTUBE"} /></div><div className="publisher-platform card"><div className="publisher-platform-icon facebook">f</div><div><strong>Facebook Page</strong><span>Page video or Reel</span></div><ProviderState provider={config?.facebook} onChange={(id) => changeConnection("FACEBOOK", id)} busy={connectionBusy === "FACEBOOK"} /></div></div>
     <div className="publisher-grid">
       <form className="card publisher-card" onSubmit={createDraft}>
         <div className="publisher-card-heading"><div><span className="eyebrow">1 · CREATE DRAFT</span><h2>Prepare a publication</h2></div><LockKeyhole size={19} /></div>

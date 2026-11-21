@@ -11,7 +11,13 @@
 .publisher-platform-icon.youtube { background: #e52f3b; }
 .publisher-platform-icon.facebook { background: #3e6ee8; font-family: Arial, sans-serif; }
 .publisher-provider { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; color: var(--muted); font-size: 11px; font-weight: 700; }
-.publisher-provider-wrap { display: inline-flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.publisher-provider-wrap { display: grid; gap: 7px; min-width: 205px; flex: 0 1 300px; }
+.publisher-provider-line { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.publisher-provider-selector { display: grid; gap: 4px; }
+.publisher-provider-selector > span { color: var(--muted); font-size: 10px; font-weight: 700; }
+.publisher-provider-selector select { min-height: 32px; padding: 0 28px 0 9px; border-radius: 7px; font-size: 11px; }
+.publisher-provider-selector select:disabled { cursor: default; opacity: .78; }
+.publisher-provider-hint { color: var(--muted); font-size: 10px; text-align: right; }
 .publisher-connect { color: var(--accent); font-size: 11px; font-weight: 700; text-decoration: none; }
 .publisher-connect:hover { text-decoration: underline; }
 .publisher-provider i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
