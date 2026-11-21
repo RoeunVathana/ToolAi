@@ -406,8 +406,15 @@ img, video, audio { max-width: 100%; }
 /* Keep the desktop navigation pinned while the workspace content scrolls. */
 @media (min-width: 901px) {
   .studio-shell { display: block; min-height: 100vh; }
-  .sidebar { position: fixed; z-index: 20; left: 0; top: 0; bottom: 0; width: 264px; height: 100vh; overflow-y: auto; }
+  .sidebar { position: fixed; z-index: 20; left: 0; top: 0; bottom: 0; width: 264px; height: 100vh; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
+  .sidebar-top, .workspace-user, .sidebar-footer { flex: 0 0 auto; }
+  .nav-groups { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-right: 3px; }
   .main-area { min-height: 100vh; margin-left: 264px; }
+}
+
+@media (max-width: 900px) {
+  .sidebar { overflow-y: auto; overscroll-behavior: contain; }
+  .nav-groups { overflow: visible; }
 }
 
 @media (min-width: 901px) and (max-width: 1100px) {
