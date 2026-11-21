@@ -8,6 +8,7 @@
 .recap-reference-actions { display: flex; align-items: center; gap: 7px; }
 .recap-reference-actions button { display: inline-flex; align-items: center; gap: 5px; min-height: 31px; padding: 0 11px; border: 1px solid rgba(164, 158, 231, .22); border-radius: 8px; color: #d9d8f8; background: rgba(10, 13, 30, .62); font-size: 11px; font-weight: 700; }
 .recap-reference-actions button:hover { border-color: #9c65ff; color: #fff; }
+.recap-reference-actions .recap-language-button { min-width: 70px; color: #fff; border-color: rgba(195, 135, 255, .65); background: linear-gradient(135deg, #7939db, #4722a4); }
 .recap-reference-subbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 19px 4px 15px; color: #aeb2d3; font-size: 11px; }
 .recap-reference-subbar > span { display: inline-flex; align-items: center; gap: 6px; color: #d8c9ff; font-weight: 700; }
 .recap-reference-shell .text-button { color: #bca7ff; }
