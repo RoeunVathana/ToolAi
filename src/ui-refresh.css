@@ -87,6 +87,13 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .project-list { gap: 9px; }
 .project-row { min-height: 70px; padding: 13px 15px; border-radius: 13px; background: color-mix(in srgb, var(--panel) 82%, transparent); }
 .project-row:hover { border-color: var(--line-strong); background: var(--panel-2); transform: translateX(2px); }
+.project-row { padding: 0; }
+.project-row-main { display: flex; align-items: center; gap: 13px; min-width: 0; flex: 1; min-height: 70px; padding: 13px 15px; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+.project-row-main:hover { color: inherit; }
+.project-row-actions { display: flex; align-items: center; gap: 5px; padding: 0 11px 0 4px; }
+.project-row-edit, .project-row-delete { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; color: var(--muted-2); background: transparent; font-size: 10px; font-weight: 800; cursor: pointer; }
+.project-row-edit:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.project-row-delete:hover { color: var(--danger); border-color: var(--danger); background: rgba(255, 141, 141, .08); }
 .project-thumb { width: 39px; height: 39px; border-radius: 11px; }
 .project-row-name { gap: 4px; }
 .project-row-name strong { font-size: 14px; }
