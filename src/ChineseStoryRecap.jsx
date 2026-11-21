@@ -36,6 +36,11 @@ export default function ChineseStoryRecap({ onBack }) {
   const [timeline, setTimeline] = useState(null);
 
   useEffect(() => {
+    document.documentElement.classList.add("recap-mode");
+    return () => document.documentElement.classList.remove("recap-mode");
+  }, []);
+
+  useEffect(() => {
     Promise.allSettled([request("/api/v1/voice/catalog", {}, token), request("/api/v1/projects", {}, token)]).then(([catalogResult, projectResult]) => {
       if (catalogResult.status === "fulfilled") setCatalog(catalogResult.value);
       if (projectResult.status === "fulfilled") setProjects(projectResult.value.projects || []);
