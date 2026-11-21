@@ -235,7 +235,7 @@ function VoiceStudio({ onBack }) {
 function ComingSoon({ view, projects = [], theme, onTheme, onBack }) {
   if (view === "publisher") return <AutoPublisher onBack={onBack} />;
   if (view === "voice") return <VoiceStudio onBack={onBack} />;
-  if (view === "recap") return <ChineseStoryRecap onBack={onBack} />;
+  if (view === "recap") return <ChineseStoryRecap onBack={onBack} theme={theme} onTheme={onTheme} />;
   if (view === "analytics") return <AnalyticsPage projects={projects} onBack={onBack} />;
   if (view === "settings") return <SettingsPage theme={theme} onTheme={onTheme} onBack={onBack} />;
   return <section className="coming-soon"><div className="coming-icon"><Sparkles size={30} /></div><span className="eyebrow">WORKSPACE</span><h1>Workspace</h1><p>Choose a tool from the navigation to continue.</p><button className="button secondary" onClick={onBack}><ArrowLeft size={16} /> Back to overview</button></section>;

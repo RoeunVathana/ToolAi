@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, Check, Download, FileText, Film, Home, Languages, Mic2, Moon, Upload, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, Check, Download, FileText, Film, Home, Languages, Mic2, Moon, Sun, Upload, WandSparkles, X } from "lucide-react";
 import "./chinese-story-recap.css";
 import { useLanguage, text } from "./language.jsx";
 
@@ -17,7 +17,7 @@ async function request(path, options = {}, token) {
 
 function Spinner() { return <span className="spinner" aria-label="Loading" />; }
 
-export default function ChineseStoryRecap({ onBack }) {
+export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme }) {
   const token = localStorage.getItem("toolaime-token") || "";
   const { language, toggleLanguage } = useLanguage();
   const [catalog, setCatalog] = useState(null);
@@ -109,7 +109,7 @@ export default function ChineseStoryRecap({ onBack }) {
   const durationLabel = timeline?.durationSeconds ? `${Math.round(timeline.durationSeconds)}s` : "00:00";
 
   return <section className="chinese-recap-shell recap-reference-shell">
-    <div className="recap-reference-header"><div className="recap-reference-brand"><div className="recap-brand-icon"><Film size={22} /></div><div><strong>TIMELINE VOICE STUDIO</strong><span>{text(language, "recapDescription")}</span></div></div><div className="recap-reference-actions"><button aria-label="Toggle theme"><Moon size={15} /></button><button className="recap-language-button" onClick={toggleLanguage}>{text(language, "language")}</button><button>{text(language, "admin")}</button><button onClick={onBack}><Home size={14} /> {text(language, "home")}</button></div></div>
+    <div className="recap-reference-header"><div className="recap-reference-brand"><div className="recap-brand-icon"><Film size={22} /></div><div><strong>TIMELINE VOICE STUDIO</strong><span>{text(language, "recapDescription")}</span></div></div><div className="recap-reference-actions"><button aria-label="Toggle theme" onClick={onTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}</button><button className="recap-language-button" onClick={toggleLanguage}>{text(language, "language")}</button><button type="button">{text(language, "admin")}</button><button onClick={onBack}><Home size={14} /> {text(language, "home")}</button></div></div>
     <div className="recap-reference-subbar"><button className="text-button" onClick={onBack}><ArrowLeft size={15} /> {text(language, "back")}</button><span><Languages size={14} /> {text(language, "recap")}</span></div>
     {error && <div className="alert error"><X size={16} />{error}<button onClick={() => setError("")}><X size={15} /></button></div>}
     {notice && <div className="alert success"><Check size={16} />{notice}<button onClick={() => setNotice("")}><X size={15} /></button></div>}
