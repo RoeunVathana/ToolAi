@@ -386,3 +386,17 @@ img, video, audio { max-width: 100%; }
   .sidebar { width: 232px; }
   .main-area { margin-left: 232px; }
 }
+
+.modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgba(4, 8, 16, .68); backdrop-filter: blur(8px); }
+.confirm-dialog { width: min(460px, 100%); padding: 26px; border: 1px solid rgba(255, 141, 141, .28); border-radius: 20px; background: linear-gradient(145deg, color-mix(in srgb, var(--panel) 96%, #25141d), var(--panel-2)); box-shadow: 0 28px 90px rgba(0, 0, 0, .42); }
+.confirm-dialog-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 18px; border: 1px solid rgba(255, 141, 141, .3); border-radius: 14px; color: var(--danger); background: rgba(255, 98, 98, .1); }
+.confirm-dialog-copy { display: grid; gap: 8px; }
+.confirm-dialog-copy .eyebrow { color: var(--danger); }
+.confirm-dialog-copy h2 { margin: 0; color: var(--text); font-size: 24px; letter-spacing: -.045em; }
+.confirm-dialog-copy p { margin: 0; color: var(--muted-2); font-size: 13px; line-height: 1.6; }
+.confirm-dialog-copy strong { overflow: hidden; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: color-mix(in srgb, var(--panel-3) 72%, transparent); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.confirm-dialog-copy small { color: var(--muted); font-size: 10px; }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.danger-button { border: 1px solid rgba(255, 141, 141, .38); color: #fff; background: linear-gradient(135deg, #d95368, #a52c50); }
+.danger-button:hover:not(:disabled) { background: linear-gradient(135deg, #ec6679, #bd3760); }
+@media (max-width: 480px) { .confirm-dialog { padding: 20px; border-radius: 16px; }.confirm-dialog-copy h2 { font-size: 21px; }.confirm-dialog-actions { display: grid; grid-template-columns: 1fr 1fr; }.confirm-dialog-actions .button { width: 100%; min-width: 0; padding-inline: 8px; } }
