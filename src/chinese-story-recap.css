@@ -1,0 +1,21 @@
+.chinese-recap-shell { max-width: 1180px; margin: 0 auto; }
+.chinese-recap-intro { align-items: flex-start; margin-bottom: 26px; }
+.chinese-recap-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 18px; align-items: start; }
+.chinese-recap-card { display: grid; gap: 16px; padding: 22px; }
+.chinese-recap-card > .voice-section-heading { margin-bottom: 2px; }
+.chinese-recap-card > .voice-section-heading > svg { color: var(--accent); }
+.chinese-recap-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chinese-source-editor { min-height: 300px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; line-height: 1.7; }
+.chinese-recap-editor { min-height: 300px; line-height: 1.75; }
+.chinese-input-note { display: flex; align-items: flex-start; gap: 8px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--panel-2); font-size: 11px; line-height: 1.5; }
+.chinese-input-note svg { flex: 0 0 auto; color: var(--accent); }
+.chinese-file-picker { width: 100%; min-height: 42px; margin: 0; }
+.chinese-recap-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 15px; border-top: 1px solid var(--line); }
+.chinese-recap-action > span { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.chinese-recap-result { display: grid; gap: 10px; padding-top: 15px; border-top: 1px solid var(--line); }
+.chinese-recap-result video { width: 100%; max-height: 300px; border-radius: 10px; background: #05090c; }
+.chinese-recap-result > div { display: grid; gap: 3px; }
+.chinese-recap-result strong { color: var(--text); font-size: 13px; }
+.chinese-recap-result span { color: var(--muted); font-size: 11px; }
+@media (max-width: 900px) { .chinese-recap-grid { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .chinese-recap-card { padding: 17px; }.chinese-recap-form-grid { grid-template-columns: 1fr; }.chinese-source-editor, .chinese-recap-editor { min-height: 220px; }.chinese-recap-action { align-items: flex-start; flex-direction: column; }.chinese-recap-action .button { width: 100%; justify-content: center; } }

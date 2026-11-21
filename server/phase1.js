@@ -580,6 +580,39 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     return res.json(voiceCatalog());
   });
 
+  app.post("/api/v1/recap/chinese", requireAuth, async (req, res) => {
+    try {
+      const input = z.object({
+        text: z.string().trim().min(20, "Paste at least 20 characters of Chinese subtitles or story text.").max(50000),
+        targetLanguage: z.enum(["km", "en"]).default("km"),
+        title: z.string().trim().max(120).default("Chinese story recap"),
+      }).parse(req.body || {});
+      if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: "Gemini is not configured. Add GEMINI_API_KEY before generating a recap.", code: "GEMINI_NOT_CONFIGURED" });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const language = input.targetLanguage === "km" ? "natural spoken Khmer" : "clear spoken English";
+      const prompt = [
+        "You are a professional Chinese drama and movie recap writer.",
+        `Rewrite the Chinese source into an original ${language} story recap for a short-form video.`,
+        "Preserve the main characters, conflict, turning points, and ending supported by the source.",
+        "Do not invent facts, do not mention translation, do not use markdown headings, and do not include timestamps.",
+        "Use short paragraphs with natural narration, a strong opening hook, and a concise ending.",
+        `Title: ${input.title}`,
+        "Chinese source subtitles/story:",
+        input.text,
+      ].join("\n\n");
+      const model = process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
+      const response = await ai.models.generateContent({ model, contents: prompt });
+      const recap = typeof response?.text === "string"
+        ? response.text.trim()
+        : response?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
+      if (!recap) throw new Error("Gemini returned an empty recap.");
+      return res.json({ recap, targetLanguage: input.targetLanguage, provider: "gemini", model });
+    } catch (error) {
+      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
+      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Chinese story recap failed.", code: error?.code || "CHINESE_RECAP_ERROR" });
+    }
+  });
+
   app.get("/api/v1/voice/narrations", requireAuth, async (req, res) => {
     const narrations = await prisma.voiceNarration.findMany({ where: { userId: req.userId }, orderBy: { createdAt: "desc" }, take: 50 });
     return res.json({ narrations: narrations.map((item) => narrationResponse(item, storageRoot)) });
