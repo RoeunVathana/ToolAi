@@ -1450,10 +1450,12 @@ async function generateGeminiScenes({ prompt, sceneCount, duration, textProvider
   for (let index = 0; index < prompts.length; index += 1) {
     scenes.push(await generateGeminiClip(prompts[index], index, prompts.length, plan.durations[index]));
   }
+  const previewVideoUrl = await stitchScenes(scenes.map((scene) => scene.videoUrl), "youtube");
   return {
     storyPlan,
     warning: storyPlan.warning || null,
     scenes,
+    previewVideoUrl: `/generated/${path.basename(previewVideoUrl)}`,
     totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0),
     sceneCount: scenes.length,
   };
