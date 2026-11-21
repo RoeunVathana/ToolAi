@@ -1536,6 +1536,7 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     }
     const includeSubtitles = String(req.body?.includeSubtitles) !== "false";
     const includeDubbing = String(req.body?.includeDubbing) === "true";
+    const extractOnly = String(req.body?.extractOnly) === "true";
     const translate = String(req.body?.translate) !== "false";
     const sourceLanguage = String(req.body?.sourceLanguage || "auto");
     const requestedTargetLanguage = String(req.body?.targetLanguage || sourceLanguage || "auto");
@@ -1552,6 +1553,17 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     const warnings = [];
     if (!usingGemini) {
       warnings.push("Demo mode created a timed caption preview. Add GEMINI_API_KEY for automatic transcription, translation, and realistic voice.");
+    }
+
+    if (extractOnly) {
+      return res.json({
+        mode: usingGemini ? "gemini" : "demo",
+        transcript: segments.map((segment) => segment.text).join("\n"),
+        captionSegments: segments,
+        captions: segments.length,
+        language: targetLanguage,
+        warnings,
+      });
     }
 
     let subtitlePath = null;

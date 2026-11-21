@@ -29,6 +29,8 @@ export default function ChineseStoryRecap({ onBack }) {
   const [sourceText, setSourceText] = useState("");
   const [recap, setRecap] = useState("");
   const [videoFile, setVideoFile] = useState(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
+  const [extractBusy, setExtractBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +49,16 @@ export default function ChineseStoryRecap({ onBack }) {
     });
   }, []);
 
+  useEffect(() => {
+    if (!videoFile) {
+      setVideoPreviewUrl("");
+      return undefined;
+    }
+    const url = URL.createObjectURL(videoFile);
+    setVideoPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [videoFile]);
+
   async function generateRecap(event) {
     event.preventDefault(); setError(""); setNotice(""); setTimeline(null);
     if (!sourceText.trim()) { setError("Paste Chinese subtitles or story text first."); return; }
@@ -56,6 +68,25 @@ export default function ChineseStoryRecap({ onBack }) {
       setRecap(data.recap || "");
       setNotice("Chinese story recap is ready. Review it before generating narration.");
     } catch (recapError) { setError(recapError.message); } finally { setBusy(false); }
+  }
+
+  async function extractVideoText() {
+    setError(""); setNotice("");
+    if (!videoFile) { setError("Choose an MP4 video first."); return; }
+    setExtractBusy(true);
+    try {
+      const form = new FormData();
+      form.append("file", videoFile);
+      form.append("extractOnly", "true");
+      form.append("sourceLanguage", "auto");
+      form.append("targetLanguage", "zh");
+      form.append("translate", "true");
+      const data = await request("/api/media/process", { method: "POST", body: form }, token);
+      const extractedText = data.transcript || (data.captionSegments || []).map((segment) => segment.text).join("\n");
+      if (!extractedText.trim()) throw new Error("AI did not find spoken text in this video.");
+      setSourceText(extractedText.trim());
+      setNotice(text(language, "videoTextReady", language === "km" ? "អត្ថបទពីវីដេអូរួចរាល់។ សូមពិនិត្យមុនបង្កើតសម្រាយ។" : "Video text is ready. Review it before generating the recap."));
+    } catch (extractError) { setError(extractError.message); } finally { setExtractBusy(false); }
   }
 
   async function exportRecap() {
@@ -89,7 +120,17 @@ export default function ChineseStoryRecap({ onBack }) {
         <section className="recap-mini-card recap-voice-card"><span className="recap-kicker">{text(language, "selectedVoice")}</span><div className="recap-voice-orb"><Mic2 size={30} /></div><h2>{voices.find((item) => item.id === voice)?.label || voice}</h2><p>Khmer narration voice</p><label className="field"><span>Change voice</span><select value={voice} onChange={(event) => setVoice(event.target.value)}>{voices.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.description}</option>)}</select></label><div className="recap-voice-status"><span>● {text(language, "ready")}</span><small>{catalog?.configured ? "Gemini TTS" : "Provider setup required"}</small></div></section>
       </aside>
       <main className="recap-reference-main">
-        <section className="recap-panel recap-video-panel"><div className="recap-panel-heading"><div><span className="recap-kicker">{text(language, "videoPreview")}</span><h2>{timeline ? "Generated recap video" : "Choose your Chinese source"}</h2></div><label className="recap-file-button"><Film size={15} /><span>{videoFile?.name || text(language, "chooseMp4")}</span><input type="file" accept="video/mp4,.mp4" onChange={(event) => setVideoFile(event.target.files?.[0] || null)} /></label></div>{timeline ? <video className="recap-video-preview" src={mediaUrl(timeline.videoUrl)} controls preload="metadata" /> : <div className="recap-video-empty"><Film size={38} /><strong>MP4 video preview</strong><span>Your Chinese story preview will appear here.</span></div>}</section>
+        <section className="recap-panel recap-video-panel">
+          <div className="recap-panel-heading">
+            <div><span className="recap-kicker">{text(language, "videoPreview")}</span><h2>{timeline ? "Generated recap video" : "Choose your Chinese source"}</h2></div>
+            <div className="recap-video-tools">
+              <label className="recap-file-button"><Film size={15} /><span>{videoFile?.name || text(language, "chooseMp4")}</span><input type="file" accept="video/mp4,.mp4" onChange={(event) => setVideoFile(event.target.files?.[0] || null)} /></label>
+              <button className="recap-ai-button" type="button" onClick={extractVideoText} disabled={!videoFile || extractBusy}>{extractBusy ? <Spinner /> : <WandSparkles size={15} />} {extractBusy ? text(language, "readingVideo", language === "km" ? "កំពុងអានវីដេអូ…" : "Reading video…") : text(language, "readVideo", language === "km" ? "AI អានវីដេអូ" : "AI read video")}</button>
+            </div>
+          </div>
+          {timeline ? <video className="recap-video-preview" src={mediaUrl(timeline.videoUrl)} controls preload="metadata" /> : videoPreviewUrl ? <video className="recap-video-preview" src={videoPreviewUrl} controls preload="metadata" /> : <div className="recap-video-empty"><Film size={38} /><strong>MP4 video preview</strong><span>Your Chinese story preview will appear here.</span></div>}
+          {videoFile && !timeline && <div className="recap-video-hint"><WandSparkles size={14} /> {text(language, "readVideoHint", language === "km" ? "ចុច AI អានវីដេអូ ដើម្បីបញ្ចូលអត្ថបទចិនដោយស្វ័យប្រវត្តិ។" : "Click AI read video to fill the Chinese text automatically.")}</div>}
+        </section>
         <form className="recap-panel recap-source-panel" onSubmit={generateRecap}><div className="recap-panel-heading"><div><span className="recap-kicker">SUBTITLE · SOURCE TEXT</span><h2>{text(language, "sourceText")}</h2></div><span className="recap-count">{sourceText.length.toLocaleString()} chars</span></div><textarea className="recap-source-editor" value={sourceText} onChange={(event) => setSourceText(event.target.value)} maxLength={50000} placeholder={text(language, "subtitleHint")} /><div className="recap-source-footer"><label className="recap-language-select"><Languages size={15} /><span>{text(language, "output")}</span><select value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)}><option value="km">{text(language, "outputKhmer")}</option><option value="en">{text(language, "outputEnglish")}</option></select></label><button className="recap-purple-button" type="submit" disabled={busy || !catalog?.configured}>{busy ? <Spinner /> : <><WandSparkles size={16} /> {text(language, "generateRecap")}</>}</button></div></form>
         <section className="recap-panel recap-script-panel"><div className="recap-panel-heading"><div><span className="recap-kicker">AI RECAP SCRIPT</span><h2>{text(language, "recapScript")}</h2></div><span className="recap-count">{recap.length.toLocaleString()} chars</span></div><textarea className="recap-script-editor" value={recap} onChange={(event) => setRecap(event.target.value)} placeholder={text(language, "scriptHint")} /><div className="recap-action-bar"><span><span className="recap-ready-dot" />{videoFile ? text(language, "sourceReady") : text(language, "chooseSource")}</span><button className="recap-purple-button" type="button" onClick={exportRecap} disabled={exportBusy || !videoFile || !recap.trim()}>{exportBusy ? <Spinner /> : <><Upload size={16} /> {text(language, "generateVoice")}</>}</button>{timeline && <a className="recap-export-button" href={mediaUrl(timeline.downloadUrl)}><Download size={15} /> {text(language, "exportVideo")}</a>}</div></section>
       </main>
