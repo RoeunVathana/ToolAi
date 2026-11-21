@@ -167,8 +167,12 @@ function hasGeminiConfig() {
 
 function getGeminiVideoModel() {
   const configured = String(process.env.GEMINI_VIDEO_MODEL || "").trim();
-  // Veo 3 model IDs previously used by this app are no longer valid here.
-  if (!configured || /^(models\/)?veo-/i.test(configured)) return "gemini-omni-1.2-flash";
+  // Veo 3 model IDs and the older numbered Omni aliases are not a reliable
+  // default for the current Interactions API. Keep the model configurable,
+  // but use the current preview name when the old value is missing or stale.
+  if (!configured || /^(models\/)?veo-/i.test(configured) || /^gemini-omni-1\.[12]-flash$/i.test(configured)) {
+    return "gemini-omni-flash-preview";
+  }
   return configured;
 }
 
@@ -644,7 +648,6 @@ async function generateGeminiClip(prompt, index, total, duration) {
     response_format: {
       type: "video",
       aspect_ratio: "16:9",
-      duration: `${duration}s`,
       delivery: "uri",
       resolution: "720p",
     },
@@ -1420,6 +1423,25 @@ function isFreeTierVideoLimitError(error) {
     && /video|gemini-omni|veo/i.test(message);
 }
 
+function shouldUseDemoVideoFallback(error) {
+  if (isFreeTierVideoLimitError(error)) return true;
+  const status = Number(error?.status || error?.code || error?.response?.status);
+  const message = String(error?.message || error || "");
+  return [400, 401, 402, 403, 404, 409, 429, 500, 502, 503, 504].includes(status)
+    || /gemini|video generation|video processing|model|quota|billing|not found|not available|unsupported|timed out|timeout|overload|temporar/i.test(message);
+}
+
+function demoVideoWarning(error) {
+  const message = String(error?.message || error || "");
+  if (/quota|rate limit|free tier|billing|limit/i.test(message)) {
+    return "Gemini video access or quota is unavailable, so ToolAiMe returned a playable demo preview with sound. Add billing or use an available Gemini video model for live AI clips.";
+  }
+  if (/model|not found|not available|unsupported/i.test(message)) {
+    return "The configured Gemini video model is unavailable for this project, so ToolAiMe returned a playable demo preview with sound. Check the Gemini model setting before retrying live generation.";
+  }
+  return "Gemini could not finish the live video request, so ToolAiMe returned a playable demo preview with sound. You can retry live generation later.";
+}
+
 function serializeGenerationJob(job) {
   return {
     mode: job.mode || "gemini",
@@ -1472,13 +1494,13 @@ function startGenerationJob(payload) {
     try {
       Object.assign(job, await generateGeminiScenes(payload), { status: "completed", updatedAt: Date.now() });
     } catch (error) {
-      if (isFreeTierVideoLimitError(error)) {
+      if (shouldUseDemoVideoFallback(error)) {
         const scenes = createDemoScenes(payload.sceneCount, payload.duration);
         const previewVideoUrl = await ensureDemoPreviewVideo();
         Object.assign(job, {
           mode: "demo",
           status: "completed",
-          warning: "Gemini video generation is not available on the free tier, so ToyPost returned a free demo preview. Upload an MP4 or enable API billing for real clips.",
+          warning: demoVideoWarning(error),
           scenes,
           previewVideoUrl,
           totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0),
