@@ -196,8 +196,8 @@ function voiceCatalog() {
   };
 }
 
-function publishingConfig(getProviderConfig) {
-  if (typeof getProviderConfig === "function") return getProviderConfig();
+async function publishingConfig(getProviderConfig) {
+  if (typeof getProviderConfig === "function") return await getProviderConfig();
   const youtubeConfigured = Boolean(process.env.YT_CLIENT_ID && process.env.YT_CLIENT_SECRET && process.env.YT_REDIRECT_URI);
   const youtubeConnected = Boolean(process.env.YT_REFRESH_TOKEN);
   const facebookConfigured = Boolean(process.env.FB_APP_ID && process.env.FB_APP_SECRET && process.env.FB_REDIRECT_URI);
@@ -744,8 +744,8 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
   app.get("/api/v1/voice/timelines/:id/audio", requireAuth, (req, res) => sendTimelineFile(req, res, "audioPath", "audio/wav"));
   app.get("/api/v1/voice/timelines/:id/subtitles", requireAuth, (req, res) => sendTimelineFile(req, res, "subtitlePath", "application/x-subrip"));
 
-  app.get("/api/v1/publishing/config", requireAuth, (_req, res) => {
-    return res.json({ config: publishingConfig(getPublishingConfig) });
+  app.get("/api/v1/publishing/config", requireAuth, async (_req, res) => {
+    return res.json({ config: await publishingConfig(getPublishingConfig) });
   });
 
   app.get("/api/v1/publishing/jobs", requireAuth, async (req, res) => {
@@ -827,7 +827,7 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     });
     if (!job) return res.status(404).json({ error: "Publishing draft not found." });
     if (!["APPROVED", "SCHEDULED"].includes(job.status)) return res.status(409).json({ error: "Approve this draft before attempting publication." });
-    const config = publishingConfig(getPublishingConfig);
+    const config = await publishingConfig(getPublishingConfig);
     const provider = job.platform === "YOUTUBE" ? config.youtube : config.facebook;
     if (!provider.canPublish) return res.status(409).json({ error: `${provider.label} is not configured for this server. Connect the official provider first; the draft remains approved.`, code: "PUBLISHING_NOT_CONFIGURED" });
     if (typeof publishVideo !== "function") return res.status(503).json({ error: "The provider upload adapter is not available in this deployment. No publication was attempted.", code: "PUBLISHING_ADAPTER_UNAVAILABLE" });

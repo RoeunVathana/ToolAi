@@ -25,7 +25,7 @@ function jobClass(status) {
 function ProviderState({ provider, onChange, busy }) {
   if (!provider) return <span className="publisher-provider unknown">Loading provider status…</span>;
   const label = provider.canPublish ? "Connected" : provider.connected ? "Needs verification" : "Not configured";
-  const action = provider.canPublish ? "Reconnect" : "Connect";
+  const action = provider.canPublish ? "Add / switch" : "Connect";
   const href = provider.label === "YouTube" ? "/api/auth/youtube" : "/api/auth/facebook";
   const isYoutube = provider.label === "YouTube";
   const options = isYoutube ? (provider.channels || []) : (provider.pages || []);
@@ -34,6 +34,7 @@ function ProviderState({ provider, onChange, busy }) {
     <div className="publisher-provider-line"><span className={`publisher-provider ${provider.canPublish ? "ready" : "blocked"}`}><i />{label}</span><a className="publisher-connect" href={href}>{action}</a></div>
     {options.length > 0 && <label className="publisher-provider-selector"><span>{isYoutube ? "Publishing channel" : "Publishing Page"}</span><select value={activeId || ""} onChange={(event) => onChange(event.target.value)} disabled={busy || options.length < 2}>{options.map((option) => <option key={option.id} value={option.id}>{isYoutube ? option.title : option.name}{option.handle ? ` · ${option.handle}` : ""}</option>)}</select></label>}
     {options.length > 1 && <span className="publisher-provider-hint">Change the destination used for new publications.</span>}
+    {options.length === 1 && <span className="publisher-provider-hint">Only one {isYoutube ? "channel" : "Page"} is connected. Use Add / switch to connect another.</span>}
   </div>;
 }
 

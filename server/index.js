@@ -261,10 +261,12 @@ function getFacebookPageOptions() {
 // Phase 1 uses the same persisted OAuth connections as the original publisher.
 // Keeping this state in one place prevents the new publisher screen from
 // showing "Not configured" when the account is already connected.
-function phase1PublishingConfig() {
+async function phase1PublishingConfig() {
   const youtubeConfigured = hasYoutubeConfig();
   const youtubeTokens = youtubeAccountTokens(getActiveYoutubeAccount()) || youtubeAuth;
   const youtubeConnected = Boolean(youtubeTokens?.refresh_token || youtubeTokens?.access_token);
+  const youtubeChannels = await getYoutubeConnectionOptions();
+  const activeYoutubeChannel = youtubeChannels.find((channel) => channel.active) || youtubeChannels[0] || null;
   const facebookConfigured = hasFacebookConfig();
   const facebookPage = getFacebookPageCredentials();
   const facebookConnected = Boolean(facebookPage?.accessToken || facebookPage?.access_token);
@@ -275,8 +277,8 @@ function phase1PublishingConfig() {
       connected: youtubeConnected,
       canPublish: youtubeConfigured && youtubeConnected,
       label: "YouTube",
-      channels: getYoutubeAccountOptions(),
-      activeChannelId: getActiveYoutubeAccount()?.id || null,
+      channels: youtubeChannels,
+      activeChannelId: activeYoutubeChannel?.id || getActiveYoutubeAccount()?.id || null,
       message: youtubeConfigured && youtubeConnected
         ? "A connected YouTube channel is ready for review and publication."
         : "Connect a YouTube channel to publish.",
