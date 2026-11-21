@@ -618,6 +618,39 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     return res.json({ narrations: narrations.map((item) => narrationResponse(item, storageRoot)) });
   });
 
+  app.patch("/api/v1/voice/narrations/:id", requireAuth, async (req, res) => {
+    try {
+      const title = z.object({ title: z.string().trim().min(1, "Enter a narration title.").max(120) }).parse(req.body || {}).title;
+      const narration = await prisma.voiceNarration.findFirst({ where: { id: req.params.id, userId: req.userId } });
+      if (!narration) return res.status(404).json({ error: "Narration not found." });
+      const updated = await prisma.$transaction(async (tx) => {
+        const result = await tx.voiceNarration.update({ where: { id: narration.id }, data: { title } });
+        if (narration.projectId) {
+          await tx.mediaAsset.updateMany({ where: { projectId: narration.projectId, storagePath: narration.storagePath }, data: { filename: `${title}.wav` } });
+        }
+        return result;
+      });
+      return res.json({ narration: narrationResponse(updated, storageRoot, true) });
+    } catch (error) {
+      return res.status(error?.name === "ZodError" ? 400 : 500).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Narration update failed." });
+    }
+  });
+
+  app.delete("/api/v1/voice/narrations/:id", requireAuth, async (req, res) => {
+    try {
+      const narration = await prisma.voiceNarration.findFirst({ where: { id: req.params.id, userId: req.userId } });
+      if (!narration) return res.status(404).json({ error: "Narration not found." });
+      await prisma.$transaction(async (tx) => {
+        if (narration.projectId) await tx.mediaAsset.deleteMany({ where: { projectId: narration.projectId, storagePath: narration.storagePath } });
+        await tx.voiceNarration.delete({ where: { id: narration.id } });
+      });
+      await fs.rm(ensureContained(storageRoot, narration.storagePath), { force: true });
+      return res.json({ ok: true, id: narration.id });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || "Narration deletion failed." });
+    }
+  });
+
   app.post("/api/v1/voice/narrations", requireAuth, async (req, res) => {
     try {
       const input = voiceRequestSchema(req.body);
