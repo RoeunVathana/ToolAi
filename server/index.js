@@ -63,7 +63,12 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use("/generated", express.static(generatedDir));
 
-registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeCommand });
+registerPhase1Routes(app, {
+  rootDir,
+  ffmpegCommand,
+  ffprobeCommand,
+  getPublishingConfig: phase1PublishingConfig,
+});
 
 const defaultPrompt =
   "A colorful miniature toy kitchen playset on a soft blue playmat. A tiny pink toaster pops up plastic toast while a toy rescue truck rolls in to deliver ingredients. Bright studio lighting, overhead macro camera, clean original toy designs, gentle playful movement, no branded characters, no text.";
@@ -249,6 +254,39 @@ function getFacebookPageOptions() {
     active: page.id === activeId,
     tasks: page.tasks || [],
   }));
+}
+
+// Phase 1 uses the same persisted OAuth connections as the original publisher.
+// Keeping this state in one place prevents the new publisher screen from
+// showing "Not configured" when the account is already connected.
+function phase1PublishingConfig() {
+  const youtubeConfigured = hasYoutubeConfig();
+  const youtubeTokens = youtubeAccountTokens(getActiveYoutubeAccount());
+  const youtubeConnected = Boolean(youtubeTokens?.refresh_token || youtubeTokens?.access_token);
+  const facebookConfigured = hasFacebookConfig();
+  const facebookPage = getFacebookPageCredentials();
+  const facebookConnected = Boolean(facebookPage?.accessToken || facebookPage?.access_token);
+  return {
+    timezone: process.env.DEFAULT_TIMEZONE || "Asia/Phnom_Penh",
+    youtube: {
+      configured: youtubeConfigured,
+      connected: youtubeConnected,
+      canPublish: youtubeConfigured && youtubeConnected,
+      label: "YouTube",
+      message: youtubeConfigured && youtubeConnected
+        ? "A connected YouTube channel is ready for review and publication."
+        : "Connect a YouTube channel to publish.",
+    },
+    facebook: {
+      configured: facebookConfigured,
+      connected: facebookConnected,
+      canPublish: facebookConfigured && facebookConnected,
+      label: "Facebook Page",
+      message: facebookConfigured && facebookConnected
+        ? "A connected Facebook Page is ready for review and publication."
+        : "Connect a Facebook Page to publish.",
+    },
+  };
 }
 
 function getActiveYoutubeAccount() {

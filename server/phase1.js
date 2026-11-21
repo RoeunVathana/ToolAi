@@ -196,7 +196,8 @@ function voiceCatalog() {
   };
 }
 
-function publishingConfig() {
+function publishingConfig(getProviderConfig) {
+  if (typeof getProviderConfig === "function") return getProviderConfig();
   const youtubeConfigured = Boolean(process.env.YT_CLIENT_ID && process.env.YT_CLIENT_SECRET && process.env.YT_REDIRECT_URI);
   const youtubeConnected = Boolean(process.env.YT_REFRESH_TOKEN);
   const facebookConfigured = Boolean(process.env.FB_APP_ID && process.env.FB_APP_SECRET && process.env.FB_REDIRECT_URI);
@@ -365,7 +366,7 @@ async function renderProject({ jobId, project, images, audio, outputPath, ffmpeg
   }
 }
 
-export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeCommand }) {
+export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeCommand, getPublishingConfig }) {
   const { storageRoot, incomingRoot, voiceRoot } = phase1Paths(rootDir);
   fsSync.mkdirSync(storageRoot, { recursive: true });
   fsSync.mkdirSync(incomingRoot, { recursive: true });
@@ -744,7 +745,7 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
   app.get("/api/v1/voice/timelines/:id/subtitles", requireAuth, (req, res) => sendTimelineFile(req, res, "subtitlePath", "application/x-subrip"));
 
   app.get("/api/v1/publishing/config", requireAuth, (_req, res) => {
-    return res.json({ config: publishingConfig() });
+    return res.json({ config: publishingConfig(getPublishingConfig) });
   });
 
   app.get("/api/v1/publishing/jobs", requireAuth, async (req, res) => {
@@ -823,7 +824,8 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     const job = await prisma.publishJob.findFirst({ where: { id: req.params.id, userId: req.userId }, include: { project: true } });
     if (!job) return res.status(404).json({ error: "Publishing draft not found." });
     if (!["APPROVED", "SCHEDULED"].includes(job.status)) return res.status(409).json({ error: "Approve this draft before attempting publication." });
-    const provider = job.platform === "YOUTUBE" ? publishingConfig().youtube : publishingConfig().facebook;
+    const config = publishingConfig(getPublishingConfig);
+    const provider = job.platform === "YOUTUBE" ? config.youtube : config.facebook;
     if (!provider.canPublish) return res.status(409).json({ error: `${provider.label} is not configured for this server. Connect the official provider first; the draft remains approved.`, code: "PUBLISHING_NOT_CONFIGURED" });
     return res.status(501).json({ error: `${provider.label} credentials are present, but the provider upload adapter is not verified in this deployment. No publication was attempted.`, code: "PUBLISHING_ADAPTER_NOT_VERIFIED" });
   });

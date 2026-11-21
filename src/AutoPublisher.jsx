@@ -25,7 +25,10 @@ function jobClass(status) {
 
 function ProviderState({ provider }) {
   if (!provider) return <span className="publisher-provider unknown">Loading provider status…</span>;
-  return <span className={`publisher-provider ${provider.canPublish ? "ready" : "blocked"}`}><i />{provider.canPublish ? "Connected" : provider.connected ? "Needs verification" : "Not configured"}</span>;
+  const label = provider.canPublish ? "Connected" : provider.connected ? "Needs verification" : "Not configured";
+  const action = provider.canPublish ? "Reconnect" : "Connect";
+  const href = provider.label === "YouTube" ? "/api/auth/youtube" : "/api/auth/facebook";
+  return <div className="publisher-provider-wrap"><span className={`publisher-provider ${provider.canPublish ? "ready" : "blocked"}`}><i />{label}</span><a className="publisher-connect" href={href}>{action}</a></div>;
 }
 
 export default function AutoPublisher({ onBack }) {
