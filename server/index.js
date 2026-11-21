@@ -734,10 +734,23 @@ async function getYoutubeChannel() {
 
 async function getYoutubeConnectionOptions() {
   const options = getYoutubeAccountOptions();
-  if (!options.length && process.env.YT_REFRESH_TOKEN) {
+  if (!options.length && (process.env.YT_REFRESH_TOKEN || youtubeAuth)) {
     const channel = await getYoutubeChannel();
     if (channel && !channel.error) {
-      return [{ ...channel, active: true }];
+      const tokens = youtubeAuth || { refresh_token: process.env.YT_REFRESH_TOKEN };
+      youtubeAccounts = [{
+        id: channel.id,
+        title: channel.title || "Connected YouTube channel",
+        handle: channel.handle || "",
+        subscribers: channel.subscribers || "0",
+        videos: channel.videos || "0",
+        tokens,
+        connectedAt: new Date().toISOString(),
+      }];
+      activeYoutubeAccountId = channel.id;
+      youtubeAuth = tokens;
+      await saveYoutubeAccounts();
+      return getYoutubeAccountOptions();
     }
   }
   return options;
