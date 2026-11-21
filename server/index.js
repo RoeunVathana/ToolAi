@@ -68,6 +68,11 @@ registerPhase1Routes(app, {
   ffmpegCommand,
   ffprobeCommand,
   getPublishingConfig: phase1PublishingConfig,
+  publishVideo: publishPhase1Video,
+  getDemoVideoPath: async () => {
+    await ensureDemoPreviewVideo();
+    return path.join(generatedDir, "toypost-demo-preview.mp4");
+  },
 });
 
 const defaultPrompt =
@@ -1124,6 +1129,15 @@ async function publishFacebookReel({ filePath, title, description, isAiGenerated
   finishUrl.searchParams.set("access_token", accessToken);
   await facebookJson(finishUrl.toString(), { method: "POST" });
   return { id: start.video_id, title, page: page.name || page.id, status: "published" };
+}
+
+async function publishPhase1Video({ filePath, platform, title, description, tags, privacyStatus }) {
+  if (platform === "YOUTUBE") {
+    const item = await uploadToYoutube({ filePath, title, description, tags, privacyStatus, madeForKids: true, containsSyntheticMedia: true });
+    return { ...item, url: `https://www.youtube.com/watch?v=${item.id}` };
+  }
+  const item = await publishFacebookReel({ filePath, title, description, isAiGenerated: true });
+  return { ...item, url: `https://www.facebook.com/reel/${item.id}` };
 }
 
 async function prepareVideo(req, videoUrls, format) {
