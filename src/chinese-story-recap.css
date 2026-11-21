@@ -82,6 +82,280 @@
 @media (max-width: 700px) { .recap-reference-header, .recap-reference-subbar { align-items: flex-start; flex-direction: column; }.recap-reference-actions { flex-wrap: wrap; }.recap-reference-sidebar { grid-template-columns: 1fr; }.recap-panel-heading { align-items: flex-start; flex-direction: column; }.recap-file-button { max-width: none; width: 100%; }.recap-source-footer, .recap-action-bar { align-items: flex-start; flex-direction: column; }.recap-source-footer > *, .recap-action-bar > * { width: 100%; }.recap-action-bar > span { margin-right: 0; } }
 @media (max-width: 700px) { .recap-video-tools { width: 100%; display: grid; grid-template-columns: 1fr; }.recap-video-tools .recap-file-button, .recap-video-tools .recap-ai-button { width: 100%; } }
 
+/* Final visual pass for the recap studio. Keep this route intentionally focused:
+   one dark canvas, one type scale, and clear action hierarchy. */
+html.recap-mode {
+  --recap-canvas: #080d18;
+  --recap-surface: #101a2b;
+  --recap-surface-raised: #14243a;
+  --recap-surface-soft: #0c1524;
+  --recap-border: rgba(145, 183, 224, .2);
+  --recap-border-strong: rgba(145, 183, 224, .38);
+  --recap-text: #f6f8ff;
+  --recap-muted: #96a8be;
+  --recap-muted-strong: #c4d1e0;
+  --recap-primary: #a77bff;
+  --recap-primary-strong: #7449e8;
+  --recap-cyan: #5ed7ff;
+}
+
+html.recap-mode body,
+html.recap-mode .studio-shell,
+html.recap-mode .main-area {
+  background: var(--recap-canvas);
+}
+
+html.recap-mode .studio-shell {
+  background:
+    radial-gradient(circle at 86% -10%, rgba(116, 73, 232, .16), transparent 27%),
+    radial-gradient(circle at 22% 100%, rgba(24, 117, 175, .1), transparent 34%),
+    var(--recap-canvas);
+}
+
+html.recap-mode .sidebar {
+  border-right: 1px solid rgba(145, 183, 224, .18);
+  background: linear-gradient(180deg, #0b1625 0%, #09121f 100%);
+  box-shadow: 12px 0 38px rgba(0, 0, 0, .2);
+}
+
+html.recap-mode .sidebar .brand-lockup strong,
+html.recap-mode .sidebar .workspace-user strong,
+html.recap-mode .sidebar .nav-item.active,
+html.recap-mode .sidebar .nav-item:hover,
+html.recap-mode .sidebar .sidebar-footnote {
+  color: var(--recap-text);
+}
+
+html.recap-mode .sidebar .brand-lockup small,
+html.recap-mode .sidebar .workspace-user span,
+html.recap-mode .sidebar .nav-label,
+html.recap-mode .sidebar .sidebar-footnote {
+  color: #7f96ac;
+}
+
+html.recap-mode .sidebar .workspace-user {
+  border-color: rgba(145, 183, 224, .2);
+  background: rgba(20, 36, 58, .72);
+}
+
+html.recap-mode .sidebar .nav-item {
+  min-height: 43px;
+  color: #a8b8c9;
+  border: 1px solid transparent;
+  transition: color .18s ease, background .18s ease, border-color .18s ease, transform .18s ease;
+}
+
+html.recap-mode .sidebar .nav-item svg { color: #7e9ab2; }
+html.recap-mode .sidebar .nav-item:hover {
+  border-color: rgba(145, 183, 224, .14);
+  background: rgba(94, 215, 255, .07);
+  transform: translateX(2px);
+}
+
+html.recap-mode .sidebar .nav-item.active {
+  border-color: rgba(167, 123, 255, .34);
+  background: linear-gradient(100deg, rgba(116, 73, 232, .27), rgba(94, 215, 255, .08));
+  box-shadow: inset 3px 0 var(--recap-primary), 0 10px 24px rgba(0, 0, 0, .16);
+}
+
+html.recap-mode .sidebar .nav-item.active svg,
+html.recap-mode .sidebar .nav-item em { color: var(--recap-cyan); }
+
+html.recap-mode .topbar {
+  border-bottom-color: rgba(145, 183, 224, .16);
+  background: rgba(8, 13, 24, .82);
+  backdrop-filter: blur(18px);
+}
+
+html.recap-mode .breadcrumbs { color: #7f96ac; }
+html.recap-mode .breadcrumbs strong { color: var(--recap-text); }
+html.recap-mode .topbar .icon-button,
+html.recap-mode .topbar .language-toggle {
+  border: 1px solid rgba(145, 183, 224, .18);
+  border-radius: 10px;
+  color: #c1d1df;
+  background: rgba(20, 36, 58, .72);
+}
+html.recap-mode .topbar .language-toggle { min-height: 34px; padding: 0 12px; font-size: 11px; font-weight: 700; }
+html.recap-mode .topbar .icon-button:hover,
+html.recap-mode .topbar .language-toggle:hover { border-color: rgba(167, 123, 255, .48); color: #fff; background: rgba(116, 73, 232, .2); }
+
+html.recap-mode .page-content {
+  width: min(1320px, calc(100% - 72px));
+  padding-top: 36px;
+  padding-bottom: 72px;
+}
+
+html.recap-mode .recap-reference-shell {
+  max-width: none;
+  color: var(--recap-text);
+}
+
+html.recap-mode .recap-reference-header {
+  min-height: 82px;
+  padding: 16px 20px;
+  border-color: rgba(167, 123, 255, .34);
+  border-radius: 18px;
+  background: linear-gradient(115deg, #141b39 0%, #1d1742 54%, #34205a 100%);
+  box-shadow: 0 20px 55px rgba(31, 13, 70, .3);
+}
+
+html.recap-mode .recap-brand-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: linear-gradient(145deg, #a77bff, #5a36c6);
+  box-shadow: 0 10px 24px rgba(116, 73, 232, .3);
+}
+
+html.recap-mode .recap-reference-brand strong {
+  color: #fff;
+  font-size: 20px;
+  letter-spacing: .035em;
+}
+html.recap-mode .recap-reference-brand span { color: #b8b9db; font-size: 11px; line-height: 1.5; }
+html.recap-mode .recap-reference-actions { gap: 8px; }
+html.recap-mode .recap-reference-actions button {
+  min-height: 36px;
+  border-color: rgba(185, 174, 255, .26);
+  border-radius: 10px;
+  color: #dfe0f8;
+  background: rgba(9, 12, 29, .48);
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+html.recap-mode .recap-reference-actions button:hover { transform: translateY(-1px); border-color: #a77bff; background: rgba(116, 73, 232, .25); }
+html.recap-mode .recap-reference-actions .recap-language-button { background: linear-gradient(135deg, #8b4ff0, #5b32c7); }
+
+html.recap-mode .recap-reference-subbar {
+  padding: 24px 4px 18px;
+  color: #9badc2;
+}
+html.recap-mode .recap-reference-subbar > span { color: #d7caff; }
+html.recap-mode .recap-reference-shell .text-button { color: var(--recap-cyan); }
+html.recap-mode .recap-reference-shell .text-button:hover { color: #fff; }
+
+html.recap-mode .recap-reference-grid { grid-template-columns: 320px minmax(0, 1fr); gap: 20px; }
+html.recap-mode .recap-reference-sidebar,
+html.recap-mode .recap-reference-main { gap: 18px; }
+html.recap-mode .recap-mini-card,
+html.recap-mode .recap-panel {
+  border-color: var(--recap-border);
+  border-radius: 16px;
+  background: linear-gradient(145deg, var(--recap-surface), var(--recap-surface-soft));
+  box-shadow: 0 15px 36px rgba(0, 0, 0, .2);
+}
+html.recap-mode .recap-mini-card { padding: 19px; }
+html.recap-mode .recap-panel { padding: 21px; }
+html.recap-mode .recap-mini-card:hover,
+html.recap-mode .recap-panel:hover { border-color: var(--recap-border-strong); }
+
+html.recap-mode .recap-section-title,
+html.recap-mode .recap-panel-heading h2 { color: var(--recap-text); }
+html.recap-mode .recap-section-title { font-size: 12px; }
+html.recap-mode .recap-section-title svg,
+html.recap-mode .recap-kicker { color: var(--recap-primary); }
+html.recap-mode .recap-kicker { font-size: 10px; letter-spacing: .16em; }
+html.recap-mode .recap-panel-heading h2 { font-size: 21px; line-height: 1.22; }
+html.recap-mode .recap-count { color: #8197ae; }
+html.recap-mode .recap-reference-shell .field { color: var(--recap-muted-strong); font-size: 11px; }
+html.recap-mode .recap-reference-shell .field > span { color: #91a7bb; font-size: 11px; }
+html.recap-mode .recap-reference-shell input,
+html.recap-mode .recap-reference-shell select,
+html.recap-mode .recap-reference-shell textarea {
+  border-color: rgba(145, 183, 224, .2);
+  border-radius: 11px;
+  color: var(--recap-text);
+  background: rgba(8, 16, 29, .72);
+}
+html.recap-mode .recap-reference-shell input,
+html.recap-mode .recap-reference-shell select { min-height: 43px; }
+html.recap-mode .recap-reference-shell input:focus,
+html.recap-mode .recap-reference-shell select:focus,
+html.recap-mode .recap-reference-shell textarea:focus {
+  border-color: var(--recap-primary);
+  box-shadow: 0 0 0 3px rgba(167, 123, 255, .14);
+}
+
+html.recap-mode .recap-stats { gap: 8px; }
+html.recap-mode .recap-stats div {
+  min-height: 70px;
+  border-color: rgba(145, 183, 224, .17);
+  border-radius: 11px;
+  background: rgba(7, 14, 26, .54);
+}
+html.recap-mode .recap-stats strong { color: #fff; font-size: 15px; }
+html.recap-mode .recap-stats span { color: #8299af; font-size: 10px; }
+html.recap-mode .recap-audio-placeholder { border-color: rgba(145, 183, 224, .18); color: #8499ae; background: rgba(7, 14, 26, .54); }
+html.recap-mode .recap-audio-placeholder svg { color: var(--recap-cyan); }
+html.recap-mode .recap-live-dot { color: #83e7b4; }
+
+html.recap-mode .recap-voice-card { background: radial-gradient(circle at 75% 15%, rgba(116, 73, 232, .22), transparent 40%), linear-gradient(145deg, #151c38, #10182c); }
+html.recap-mode .recap-voice-orb { width: 88px; height: 88px; border-radius: 26px; background: radial-gradient(circle at 35% 25%, #b27bff, #3c287e 72%); box-shadow: 0 0 34px rgba(141, 108, 255, .34); }
+html.recap-mode .recap-voice-card h2 { color: #fff; font-size: 20px; }
+html.recap-mode .recap-voice-card p { color: #9ba7c8; }
+html.recap-mode .recap-voice-status { border-top-color: rgba(145, 183, 224, .18); }
+html.recap-mode .recap-voice-status span { color: #83e7b4; }
+html.recap-mode .recap-voice-status small { color: #8398ad; }
+
+html.recap-mode .recap-video-tools { gap: 9px; }
+html.recap-mode .recap-file-button,
+html.recap-mode .recap-ai-button,
+html.recap-mode .recap-purple-button,
+html.recap-mode .recap-export-button {
+  min-height: 40px;
+  border-radius: 10px;
+  font-size: 11px;
+  transition: transform .18s ease, filter .18s ease, border-color .18s ease;
+}
+html.recap-mode .recap-file-button { border-color: rgba(167, 123, 255, .54); background: rgba(116, 73, 232, .2); }
+html.recap-mode .recap-ai-button { border-color: rgba(94, 215, 255, .34); color: #a9efff; background: rgba(37, 185, 242, .1); }
+html.recap-mode .recap-file-button:hover,
+html.recap-mode .recap-ai-button:hover:not(:disabled),
+html.recap-mode .recap-purple-button:hover:not(:disabled),
+html.recap-mode .recap-export-button:hover { transform: translateY(-1px); filter: brightness(1.12); }
+html.recap-mode .recap-video-empty {
+  min-height: 330px;
+  border-color: rgba(145, 183, 224, .22);
+  background: radial-gradient(circle at 50% 35%, rgba(116, 73, 232, .2), transparent 44%), #070e1a;
+}
+html.recap-mode .recap-video-empty svg { color: var(--recap-cyan); }
+html.recap-mode .recap-video-empty strong { color: #eff3ff; font-size: 15px; }
+html.recap-mode .recap-video-empty span { color: #879bb0; }
+html.recap-mode .recap-video-preview { max-height: 430px; border: 1px solid rgba(145, 183, 224, .2); border-radius: 12px; box-shadow: 0 16px 35px rgba(0, 0, 0, .24); }
+html.recap-mode .recap-video-hint { color: #9aacc0; }
+html.recap-mode .recap-source-editor,
+html.recap-mode .recap-script-editor { min-height: 175px; font-family: "Noto Sans Khmer", Inter, sans-serif; font-size: 14px; line-height: 1.9; }
+html.recap-mode .recap-source-editor { font-family: ui-monospace, "Noto Sans Khmer", Consolas, monospace; }
+html.recap-mode .recap-source-footer,
+html.recap-mode .recap-action-bar { border-top-color: rgba(145, 183, 224, .18); }
+html.recap-mode .recap-language-select { color: #9baec1; }
+html.recap-mode .recap-language-select svg { color: var(--recap-primary); }
+html.recap-mode .recap-purple-button,
+html.recap-mode .recap-export-button { border-color: rgba(201, 168, 255, .5); background: linear-gradient(135deg, #8b55f0, #5c37c6); box-shadow: 0 10px 22px rgba(91, 48, 200, .24); }
+html.recap-mode .recap-action-bar > span { color: #879bb0; }
+html.recap-mode .recap-reference-footnote { color: #7f95a9; }
+html.recap-mode .recap-reference-footnote svg { color: var(--recap-primary); }
+
+@media (min-width: 1200px) {
+  html.recap-mode .recap-reference-grid { grid-template-columns: 340px minmax(0, 1fr); }
+  html.recap-mode .recap-video-empty { min-height: 370px; }
+}
+
+@media (max-width: 900px) {
+  html.recap-mode .page-content { width: min(100% - 40px, 720px); }
+}
+
+@media (max-width: 640px) {
+  html.recap-mode .page-content { width: calc(100% - 28px); padding-top: 24px; }
+  html.recap-mode .recap-reference-header { align-items: flex-start; padding: 16px; }
+  html.recap-mode .recap-reference-brand strong { font-size: 17px; }
+  html.recap-mode .recap-reference-actions { width: 100%; flex-wrap: wrap; }
+  html.recap-mode .recap-reference-actions button { flex: 1 1 auto; }
+  html.recap-mode .recap-reference-subbar { padding-top: 18px; }
+  html.recap-mode .recap-panel-heading h2 { font-size: 18px; }
+  html.recap-mode .recap-video-empty { min-height: 240px; }
+}
+
 /* The recap workspace is a focused studio surface, so it should not inherit
    the light dashboard shell while this route is mounted. */
 html[data-theme="light"].recap-mode,
