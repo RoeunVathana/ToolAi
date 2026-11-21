@@ -955,7 +955,7 @@ async function createGeminiMediaSegments({ filePath, mimeType, transcript, sourc
     `The video duration is about ${duration.toFixed(2)} seconds.`,
     sourceLanguage && sourceLanguage !== "auto" ? `The spoken language is ${mediaLanguageLabel(sourceLanguage)}.` : "Detect the spoken language automatically.",
     translationRequest,
-    "Return only JSON matching the schema. Use short captions, avoid overlapping segments, and keep timestamps inside the video duration.",
+    "Return only a JSON object with a segments array. Each item must have numeric start and end seconds and a short text caption. Avoid overlapping segments and keep timestamps inside the video duration.",
     transcript?.trim() ? `Transcript supplied by the creator:\n${transcript.slice(0, 20000)}` : "Listen to the uploaded media and transcribe the spoken words.",
   ].join("\n\n");
   const contents = mediaPart ? [{ role: "user", parts: [{ text: prompt }, mediaPart] }] : prompt;
@@ -964,7 +964,6 @@ async function createGeminiMediaSegments({ filePath, mimeType, transcript, sourc
     contents,
     config: {
       responseMimeType: "application/json",
-      responseSchema: createMediaCaptionSchema(),
       temperature: 0.2,
     },
   });
@@ -1547,8 +1546,9 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     const targetLanguage = translate ? requestedTargetLanguage : sourceLanguage;
     const transcript = String(req.body?.transcript || "").trim();
     const voice = String(req.body?.voice || "Kore");
-    mediaOptions = { includeSubtitles, targetLanguage, transcript };
+    mediaOptions = { includeSubtitles, targetLanguage, transcript, extractOnly };
     const duration = await getMediaDuration(tempInput);
+    mediaOptions.duration = duration;
     const usingGemini = hasGeminiConfig();
     await fs.mkdir(generatedDir, { recursive: true });
     const segments = usingGemini
@@ -1618,14 +1618,26 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     });
   } catch (error) {
     const normalized = normalizeProviderError(error, "Media processing failed.");
-    if (normalized.body.code === "GEMINI_QUOTA_EXHAUSTED" && tempInput && mediaOptions) {
+    if ((normalized.body.code === "GEMINI_QUOTA_EXHAUSTED" || isTransientGeminiError(error)) && tempInput && mediaOptions) {
       try {
+        const warning = `${normalized.body.error} Gemini is temporarily busy, so ToyPost created a local caption preview and kept the original audio.`;
+        if (mediaOptions.extractOnly) {
+          const fallbackSegments = createDemoMediaSegments(mediaOptions.transcript, mediaOptions.duration);
+          return res.json({
+            mode: "demo",
+            transcript: fallbackSegments.map((segment) => segment.text).join("\n"),
+            captionSegments: fallbackSegments,
+            captions: fallbackSegments.length,
+            language: mediaOptions.targetLanguage,
+            warnings: [warning],
+          });
+        }
         const fallback = await createDemoMediaOutput({
           inputPath: tempInput,
           includeSubtitles: mediaOptions.includeSubtitles,
           targetLanguage: mediaOptions.targetLanguage,
           transcript: mediaOptions.transcript,
-          warning: `${normalized.body.error} ToyPost created a demo caption preview and kept the original audio.`,
+          warning,
         });
         return res.json(fallback);
       } catch {

@@ -30,6 +30,31 @@ const supportedTtsVoices = [
   { id: "Rasalgethi", label: "Rasalgethi", description: "Narration-focused" },
 ];
 
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isTransientGeminiError(error) {
+  const status = Number(error?.status || error?.code || error?.response?.status);
+  const message = String(error?.message || error || "");
+  return [429, 500, 502, 503, 504].includes(status)
+    || /high demand|temporar|overload|unavailable|resource exhausted|try again later/i.test(message);
+}
+
+async function withGeminiRetry(operation, attempts = 3) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientGeminiError(error) || attempt === attempts - 1) throw error;
+      await sleep(1500 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
 function phase1Paths(rootDir) {
   const storageRoot = path.resolve(process.env.STORAGE_PATH || path.join(rootDir, "storage"), "phase1");
   const incomingRoot = path.join(rootDir, "server", "incoming", "phase1");
@@ -600,16 +625,21 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
         "Chinese source subtitles/story:",
         input.text,
       ].join("\n\n");
-      const model = process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
-      const response = await ai.models.generateContent({ model, contents: prompt });
+      const model = process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MODEL || "gemini-3.8-flash";
+      const response = await withGeminiRetry(() => ai.models.generateContent({ model, contents: prompt }));
       const recap = typeof response?.text === "string"
         ? response.text.trim()
         : response?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim() || "";
       if (!recap) throw new Error("Gemini returned an empty recap.");
       return res.json({ recap, targetLanguage: input.targetLanguage, provider: "gemini", model });
     } catch (error) {
-      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
-      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Chinese story recap failed.", code: error?.code || "CHINESE_RECAP_ERROR" });
+      const status = error?.name === "ZodError" ? 400 : isTransientGeminiError(error) ? 503 : (error?.status || 502);
+      const message = error?.name === "ZodError"
+        ? error.issues[0]?.message
+        : isTransientGeminiError(error)
+          ? "Gemini is temporarily busy. Please try the recap again in a moment; your source text is still saved in this form."
+          : error.message || "Chinese story recap failed.";
+      return res.status(status).json({ error: message, code: isTransientGeminiError(error) ? "GEMINI_TEMPORARILY_BUSY" : error?.code || "CHINESE_RECAP_ERROR" });
     }
   });
 
