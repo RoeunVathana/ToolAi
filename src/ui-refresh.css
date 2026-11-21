@@ -28,7 +28,29 @@
   --accent-strong: #6d901f;
   --shadow: 0 18px 45px rgba(42, 72, 88, .11);
 }
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(143, 173, 194, .56) transparent;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(143, 173, 194, .56) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  min-height: 42px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(143, 173, 194, .46);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(217, 244, 127, .72); background-clip: padding-box; }
+:root[data-theme="light"] html,
+:root[data-theme="light"] * { scrollbar-color: rgba(74, 105, 121, .42) transparent; }
+:root[data-theme="light"] *::-webkit-scrollbar-thumb { background: rgba(74, 105, 121, .34); background-clip: padding-box; }
+:root[data-theme="light"] *::-webkit-scrollbar-thumb:hover { background: rgba(109, 144, 31, .66); background-clip: padding-box; }
 body { background: radial-gradient(circle at 76% -18%, rgba(99, 132, 190, .14), transparent 32%), var(--bg); }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .studio-shell { background: transparent; }
