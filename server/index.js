@@ -261,7 +261,7 @@ function getFacebookPageOptions() {
 // showing "Not configured" when the account is already connected.
 function phase1PublishingConfig() {
   const youtubeConfigured = hasYoutubeConfig();
-  const youtubeTokens = youtubeAccountTokens(getActiveYoutubeAccount());
+  const youtubeTokens = youtubeAccountTokens(getActiveYoutubeAccount()) || youtubeAuth;
   const youtubeConnected = Boolean(youtubeTokens?.refresh_token || youtubeTokens?.access_token);
   const facebookConfigured = hasFacebookConfig();
   const facebookPage = getFacebookPageCredentials();
