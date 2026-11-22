@@ -522,7 +522,7 @@ function normalizeProviderError(error, fallbackMessage) {
     return {
       status: 429,
       body: {
-        error: `Gemini quota is exhausted for this project or model.${retryText} You can use Built-in planner/demo mode while waiting.`,
+        error: `Gemini quota is exhausted for this project or model.${retryText} No AI video or automatic transcript was created. Check billing/model access or provide your own media text.`,
         code: "GEMINI_QUOTA_EXHAUSTED",
         retryAfterSeconds,
       },
@@ -903,12 +903,6 @@ function splitCaptionText(text) {
     .split(/(?<=[.!?。！？])\s+|\r?\n+/)
     .map((part) => part.trim())
     .filter(Boolean);
-}
-
-function demoMediaTranscript(targetLanguage = "auto") {
-  if (targetLanguage === "zh") return "示例字幕：Gemini 配额暂时不可用。请在这里粘贴视频的实际字幕。";
-  if (targetLanguage === "km") return "អត្ថបទសាកល្បង៖ កូតា Gemini មិនអាចប្រើបានជាបណ្ដោះអាសន្ន។ សូមបិទភ្ជាប់អត្ថបទពិតរបស់វីដេអូនៅទីនេះ។";
-  return "Demo transcript: Gemini is temporarily unavailable. Paste the actual transcript here before generating the recap.";
 }
 
 function createDemoMediaSegments(transcript, duration) {
@@ -1578,18 +1572,20 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     mediaOptions.duration = duration;
     const usingGemini = hasGeminiConfig();
     await fs.mkdir(generatedDir, { recursive: true });
-    const fallbackTranscript = transcript || demoMediaTranscript(targetLanguage);
+    if (!usingGemini && !transcript) {
+      return res.status(503).json({
+        error: "Gemini is not available for automatic transcription. Paste the real transcript/SRT yourself or configure a Gemini API project with access.",
+        code: "GEMINI_TRANSCRIPTION_NOT_CONFIGURED",
+      });
+    }
     const segments = usingGemini
       ? await createGeminiMediaSegments({ filePath: tempInput, mimeType: req.file.mimetype || "video/mp4", transcript, sourceLanguage, targetLanguage, duration })
-      : normalizeMediaSegments(null, duration, fallbackTranscript);
-    const warnings = [];
-    if (!usingGemini) {
-      warnings.push("Gemini is not available, so demo caption text was inserted. Replace it with the real transcript before generating the recap.");
-    }
+      : normalizeMediaSegments(null, duration, transcript);
+    const warnings = usingGemini ? [] : ["Creator-supplied transcript was used; no automatic transcript was generated."];
 
     if (extractOnly) {
       return res.json({
-        mode: usingGemini ? "gemini" : "demo",
+        mode: usingGemini ? "gemini" : "manual",
         transcript: segments.map((segment) => segment.text).join("\n"),
         captionSegments: segments,
         captions: segments.length,
@@ -1636,7 +1632,7 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     }
 
     return res.json({
-      mode: usingGemini ? "gemini" : "demo",
+      mode: usingGemini ? "gemini" : "manual",
       videoUrl: `/generated/${path.basename(outputPath)}`,
       subtitleUrl: subtitlePath ? `/generated/${path.basename(subtitlePath)}` : null,
       captions: segments.length,
@@ -1646,22 +1642,21 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     });
   } catch (error) {
     const normalized = normalizeProviderError(error, "Media processing failed.");
-    if ((normalized.body.code === "GEMINI_QUOTA_EXHAUSTED" || isTransientGeminiError(error)) && tempInput && mediaOptions) {
+    if ((normalized.body.code === "GEMINI_QUOTA_EXHAUSTED" || isTransientGeminiError(error)) && tempInput && mediaOptions?.transcript) {
       try {
         const warning = mediaOptions.transcript
           ? `${normalized.body.error} Gemini is temporarily busy, so the supplied transcript was kept as timed captions and the original audio was preserved.`
           : `${normalized.body.error} No captions were generated and the original audio was preserved. You can paste your own transcript and try again later.`;
         if (mediaOptions.extractOnly) {
-          const fallbackText = mediaOptions.transcript || demoMediaTranscript(mediaOptions.targetLanguage);
-          const fallbackSegments = createDemoMediaSegments(fallbackText, mediaOptions.duration);
+          const fallbackSegments = createDemoMediaSegments(mediaOptions.transcript, mediaOptions.duration);
           return res.json({
-            mode: "demo",
+            mode: "manual",
             transcript: fallbackSegments.map((segment) => segment.text).join("\n"),
             captionSegments: fallbackSegments,
             captions: fallbackSegments.length,
             language: mediaOptions.targetLanguage,
-            warnings: [mediaOptions.transcript ? warning : `${normalized.body.error} Demo caption text was inserted because Gemini is temporarily unavailable. Replace it with the real transcript before generating the recap.`],
-            demoPlaceholder: !mediaOptions.transcript,
+            warnings: [warning],
+            demoPlaceholder: false,
           });
         }
         const fallback = await createDemoMediaOutput({
