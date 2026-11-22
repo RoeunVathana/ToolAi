@@ -167,13 +167,11 @@ function hasGeminiConfig() {
 
 function getGeminiVideoModel() {
   const configured = String(process.env.GEMINI_VIDEO_MODEL || "").trim();
-  // Veo 3 model IDs and the older numbered Omni aliases are not a reliable
-  // default for the current Interactions API. Keep the model configurable,
-  // but use the current preview name when the old value is missing or stale.
-  if (!configured || /^(models\/)?veo-/i.test(configured) || /^gemini-omni-1\.[12]-flash$/i.test(configured)) {
-    return "gemini-omni-flash-preview";
-  }
-  return configured;
+  // Gemini Omni video is served through Interactions. Preserve an explicit
+  // model because numbered Omni aliases are valid model IDs for that API;
+  // only replace old Veo values, which cannot be used by this request path.
+  if (!configured || /^(models\/)?veo-/i.test(configured)) return "gemini-omni-1.2-flash";
+  return configured.replace(/^models\//i, "");
 }
 
 function hasYoutubeConfig() {
@@ -425,7 +423,7 @@ function findTextContent(interaction) {
     .find((content) => content.type === "text")?.text;
 }
 
-function normalizeStoryPlan(value, generationPlan, sourcePrompt, model = process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash") {
+function normalizeStoryPlan(value, generationPlan, sourcePrompt, model = process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash") {
   const fallbackTitle = "Original Toy Playset Adventure";
   const fallbackDescription = "A cheerful original toy playset adventure with gentle movement, playful sound, and family-friendly fun. #Toys #PretendPlay #KidsToys";
   const scenes = Array.from({ length: generationPlan.count }, (_, index) => {
@@ -453,15 +451,14 @@ function normalizeStoryPlan(value, generationPlan, sourcePrompt, model = process
 async function planStoryWithGemini({ prompt = defaultPrompt, sceneCount = 4, duration = 60 }) {
   const generationPlan = createGenerationPlan(sceneCount, duration);
   const ai = createGeminiClient();
-  const model = process.env.GEMINI_TEXT_MODEL || "gemini-3.8-flash";
+  const model = process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const interaction = await withGeminiRetry(() => ai.interactions.create({
     model,
-    input: `You are the normal Gemini story producer for a safe family-friendly toy video channel. Turn this idea into a production-ready plan for exactly ${generationPlan.count} scenes totaling ${generationPlan.targetDuration} seconds. Keep all characters and toys original; never use brand names or copyrighted characters. Write vivid but practical prompts for a video model. Include natural, original sound directions. Avoid scary, dangerous, sexual, political, or realistic child content.\n\nIDEA:\n${String(prompt).slice(0, 4000)}`,
+    input: `You are the normal Gemini story producer for a safe family-friendly toy video channel. Turn this idea into a production-ready plan for exactly ${generationPlan.count} scenes totaling ${generationPlan.targetDuration} seconds. Keep all characters and toys original; never use brand names or copyrighted characters. Write vivid, practical prompts that describe visible action, camera movement, lighting, continuity, and natural original sound directions for a video model. Avoid scary, dangerous, sexual, political, or realistic child content.\n\nReturn only valid JSON (no markdown) with this shape: {"title":"string","description":"string","tags":["string"],"scenes":[{"title":"string","prompt":"string","audio":"string"}]}. The scenes array must contain exactly ${generationPlan.count} scenes.\n\nIDEA:\n${String(prompt).slice(0, 4000)}`,
     store: false,
     response_format: {
       type: "text",
       mime_type: "application/json",
-      schema: createStoryPlanSchema(generationPlan.count),
     },
   }));
   const text = findTextContent(interaction);
@@ -1426,6 +1423,7 @@ function shouldUseDemoVideoFallback(error) {
   if (isFreeTierVideoLimitError(error)) return true;
   const status = Number(error?.status || error?.code || error?.response?.status);
   const message = String(error?.message || error || "");
+  if (/schema.*(?:too many states|constraint)|too many states for serving|invalid schema/i.test(message)) return false;
   return [400, 401, 402, 403, 404, 409, 429, 500, 502, 503, 504].includes(status)
     || /gemini|video generation|video processing|model|quota|billing|not found|not available|unsupported|timed out|timeout|overload|temporar/i.test(message);
 }
@@ -1433,12 +1431,12 @@ function shouldUseDemoVideoFallback(error) {
 function demoVideoWarning(error) {
   const message = String(error?.message || error || "");
   if (/quota|rate limit|free tier|billing|limit/i.test(message)) {
-    return "Gemini video access or quota is unavailable, so ToolAiMe returned a playable demo preview with sound. Add billing or use an available Gemini video model for live AI clips.";
+    return "Live Gemini video access or quota is unavailable. The MP4 shown is only a test-pattern demo, not an AI action video; do not publish it. Add paid video access or use an uploaded MP4 instead.";
   }
   if (/model|not found|not available|unsupported/i.test(message)) {
-    return "The configured Gemini video model is unavailable for this project, so ToolAiMe returned a playable demo preview with sound. Check the Gemini model setting before retrying live generation.";
+    return "The configured Gemini video model is unavailable. The MP4 shown is only a test-pattern demo, not an AI action video; check the model and retry live generation.";
   }
-  return "Gemini could not finish the live video request, so ToolAiMe returned a playable demo preview with sound. You can retry live generation later.";
+  return "Gemini could not finish the live video request. The MP4 shown is only a test-pattern demo, not an AI action video; retry live generation later.";
 }
 
 function serializeGenerationJob(job) {
