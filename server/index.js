@@ -168,9 +168,14 @@ function hasGeminiConfig() {
 function getGeminiVideoModel() {
   const configured = String(process.env.GEMINI_VIDEO_MODEL || "").trim();
   // Gemini Omni video is served through Interactions. Preserve an explicit
-  // model because numbered Omni aliases are valid model IDs for that API;
-  // only replace old Veo values, which cannot be used by this request path.
-  if (!configured || /^(models\/)?veo-/i.test(configured)) return "gemini-omni-1.2-flash";
+  // model because numbered Omni aliases are valid model IDs for that API.
+  // Migrate stale preview/Veo values so an old Railway variable cannot silently
+  // force every request into the demo fallback.
+  if (
+    !configured
+    || /^(models\/)?veo-/i.test(configured)
+    || /^(models\/)?gemini-omni-flash-preview$/i.test(configured)
+  ) return "gemini-omni-1.2-flash";
   return configured.replace(/^models\//i, "");
 }
 
@@ -671,20 +676,21 @@ async function generateGeminiClip(prompt, index, total, duration) {
   if (video.data) {
     await fs.writeFile(outputPath, Buffer.from(video.data, "base64"));
   } else {
-    const fileId = video.uri.match(/\/files\/([^/:?]+)/)?.[1];
-    if (fileId) {
-      while (Date.now() < deadline) {
-        const file = await withGeminiRetry(() => ai.files.get({ name: `files/${fileId}` }), { attempts: 3, baseDelayMs: 1000 });
-        const state = String(file.state || "").toUpperCase();
-        if (state === "ACTIVE") break;
-        if (state === "FAILED") throw new Error(file.error?.message || "Gemini video processing failed.");
-        await sleep(5000);
-      }
-      if (Date.now() >= deadline) throw new Error("Gemini video processing timed out. Try a shorter video or try again later.");
+    // URI delivery returns a Gemini Files API resource. Use the official SDK
+    // downloader instead of fetching the URI directly; this handles the
+    // authenticated file endpoint and writes the binary MP4 safely.
+    const fileId = String(video.uri).match(/(?:^|\/)files\/([^/:?]+)/)?.[1];
+    if (!fileId) throw new Error("Gemini returned an unsupported video file URI.");
+    const fileName = `files/${fileId}`;
+    while (Date.now() < deadline) {
+      const file = await withGeminiRetry(() => ai.files.get({ name: fileName }), { attempts: 3, baseDelayMs: 1000 });
+      const state = String(file.state || "").toUpperCase();
+      if (state === "ACTIVE") break;
+      if (state === "FAILED") throw new Error(file.error?.message || "Gemini video processing failed.");
+      await sleep(5000);
     }
-    const response = await fetch(video.uri, { headers: { "x-goog-api-key": process.env.GEMINI_API_KEY } });
-    if (!response.ok) throw new Error(`Gemini video download failed with status ${response.status}.`);
-    await fs.writeFile(outputPath, Buffer.from(await response.arrayBuffer()));
+    if (Date.now() >= deadline) throw new Error("Gemini video processing timed out. Try a shorter video or try again later.");
+    await ai.files.download({ file: fileName, downloadPath: outputPath });
   }
   return {
     id: `scene-${Date.now()}-${index}`,
