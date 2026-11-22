@@ -121,8 +121,11 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
       form.append("video", videoFile); form.append("title", title); form.append("voice", voice); form.append("script", recap);
       form.append("projectId", targetProjectId);
       const data = await request("/api/v1/voice/timelines", { method: "POST", body: form }, token);
+      if (targetProjectId && data.timeline && onOpenPublisher) {
+        await onOpenPublisher(targetProjectId);
+        return;
+      }
       setTimeline(data.timeline); setNotice("Recap MP4 generated. Preview it before publishing.");
-      if (targetProjectId && data.asset && onOpenPublisher) onOpenPublisher(targetProjectId);
     } catch (exportError) {
       if (createdProjectId) await request(`/api/v1/projects/${createdProjectId}`, { method: "DELETE" }, token).catch(() => {});
       setError(exportError.message);
