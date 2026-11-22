@@ -41,6 +41,15 @@ function isTransientGeminiError(error) {
     || /high demand|temporar|overload|unavailable|resource exhausted|try again later/i.test(message);
 }
 
+function buildDemoRecap({ title, text, targetLanguage }) {
+  const source = String(text || "").replace(/\s+/g, " ").trim().slice(0, 900);
+  const label = String(title || "Chinese story recap").trim();
+  if (targetLanguage === "km") {
+    return `សម្រាយសាកល្បង៖ ${label}\n\nGemini មិនអាចប្រើបានជាបណ្ដោះអាសន្ន ដោយសារកូតាត្រូវបានប្រើអស់។ សូមពិនិត្យ និងកែសម្រួលអត្ថបទនេះ មុនប្រើសម្រាប់សំឡេង។\n\nអត្ថបទប្រភព៖ ${source}`;
+  }
+  return `Demo recap: ${label}\n\nGemini is temporarily unavailable because the project quota is exhausted. Review and edit this draft before using it for narration.\n\nSource text: ${source}`;
+}
+
 async function withGeminiRetry(operation, attempts = 3) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -606,8 +615,9 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
   });
 
   app.post("/api/v1/recap/chinese", requireAuth, async (req, res) => {
+    let input = null;
     try {
-      const input = z.object({
+      input = z.object({
         text: z.string().trim().min(20, "Paste at least 20 characters of Chinese subtitles or story text.").max(50000),
         targetLanguage: z.enum(["km", "en"]).default("km"),
         title: z.string().trim().max(120).default("Chinese story recap"),
@@ -639,6 +649,14 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
         : isTransientGeminiError(error)
           ? "Gemini is temporarily busy. Please try the recap again in a moment; your source text is still saved in this form."
           : error.message || "Chinese story recap failed.";
+      if (input && isTransientGeminiError(error)) {
+        return res.json({
+          recap: buildDemoRecap(input),
+          targetLanguage: input.targetLanguage,
+          provider: "demo",
+          warning: `${message} A demo recap was created so you can continue editing while Gemini recovers.`,
+        });
+      }
       return res.status(status).json({ error: message, code: isTransientGeminiError(error) ? "GEMINI_TEMPORARILY_BUSY" : error?.code || "CHINESE_RECAP_ERROR" });
     }
   });

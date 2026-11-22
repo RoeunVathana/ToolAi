@@ -66,7 +66,7 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
     try {
       const data = await request("/api/v1/recap/chinese", { method: "POST", body: JSON.stringify({ title, text: sourceText, targetLanguage }) }, token);
       setRecap(data.recap || "");
-      setNotice("Chinese story recap is ready. Review it before generating narration.");
+      setNotice(data.warning || text(language, "recapReadyNotice", language === "km" ? "សម្រាយរឿងចិនរួចរាល់។ សូមពិនិត្យមុនបង្កើតសំឡេង។" : "Chinese story recap is ready. Review it before generating narration."));
     } catch (recapError) { setError(recapError.message); } finally { setBusy(false); }
   }
 
@@ -84,7 +84,11 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
       const data = await request("/api/media/process", { method: "POST", body: form }, token);
       const extractedText = data.transcript || (data.captionSegments || []).map((segment) => segment.text).join("\n");
       if (!extractedText.trim()) {
-        setNotice(data.warnings?.[0] || "No transcript was returned. You can write or paste the source text yourself.");
+        const demoText = language === "km"
+          ? "អត្ថបទសាកល្បង៖ Gemini មិនអាចប្រើបានជាបណ្ដោះអាសន្ន។ សូមលុបអត្ថបទនេះ ហើយបិទភ្ជាប់អត្ថបទពិតរបស់វីដេអូ។"
+          : "Demo transcript: Gemini is temporarily unavailable. Replace this text with the actual transcript from your video.";
+        setSourceText(demoText);
+        setNotice(data.warnings?.[0] || (language === "km" ? "បានបញ្ចូលអត្ថបទសាកល្បង។ សូមជំនួសដោយអត្ថបទពិត មុនបង្កើតសម្រាយ។" : "Demo text was inserted. Replace it with the actual transcript before generating the recap."));
         return;
       }
       setSourceText(extractedText.trim());

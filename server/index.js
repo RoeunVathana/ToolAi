@@ -899,6 +899,12 @@ function splitCaptionText(text) {
     .filter(Boolean);
 }
 
+function demoMediaTranscript(targetLanguage = "auto") {
+  if (targetLanguage === "zh") return "示例字幕：Gemini 配额暂时不可用。请在这里粘贴视频的实际字幕。";
+  if (targetLanguage === "km") return "អត្ថបទសាកល្បង៖ កូតា Gemini មិនអាចប្រើបានជាបណ្ដោះអាសន្ន។ សូមបិទភ្ជាប់អត្ថបទពិតរបស់វីដេអូនៅទីនេះ។";
+  return "Demo transcript: Gemini is temporarily unavailable. Paste the actual transcript here before generating the recap.";
+}
+
 function createDemoMediaSegments(transcript, duration) {
   const parts = splitCaptionText(transcript);
   const lines = parts;
@@ -1570,12 +1576,13 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
     mediaOptions.duration = duration;
     const usingGemini = hasGeminiConfig();
     await fs.mkdir(generatedDir, { recursive: true });
+    const fallbackTranscript = transcript || demoMediaTranscript(targetLanguage);
     const segments = usingGemini
       ? await createGeminiMediaSegments({ filePath: tempInput, mimeType: req.file.mimetype || "video/mp4", transcript, sourceLanguage, targetLanguage, duration })
-      : normalizeMediaSegments(null, duration, transcript);
+      : normalizeMediaSegments(null, duration, fallbackTranscript);
     const warnings = [];
     if (!usingGemini) {
-      warnings.push("No automatic captions were generated. Paste your own transcript, or configure Gemini for real transcription and translation.");
+      warnings.push("Gemini is not available, so demo caption text was inserted. Replace it with the real transcript before generating the recap.");
     }
 
     if (extractOnly) {
@@ -1643,14 +1650,16 @@ app.post("/api/media/process", mediaUploadMiddleware.single("file"), async (req,
           ? `${normalized.body.error} Gemini is temporarily busy, so the supplied transcript was kept as timed captions and the original audio was preserved.`
           : `${normalized.body.error} No captions were generated and the original audio was preserved. You can paste your own transcript and try again later.`;
         if (mediaOptions.extractOnly) {
-          const fallbackSegments = createDemoMediaSegments(mediaOptions.transcript, mediaOptions.duration);
+          const fallbackText = mediaOptions.transcript || demoMediaTranscript(mediaOptions.targetLanguage);
+          const fallbackSegments = createDemoMediaSegments(fallbackText, mediaOptions.duration);
           return res.json({
             mode: "demo",
             transcript: fallbackSegments.map((segment) => segment.text).join("\n"),
             captionSegments: fallbackSegments,
             captions: fallbackSegments.length,
             language: mediaOptions.targetLanguage,
-            warnings: [mediaOptions.transcript ? warning : `${normalized.body.error} No caption text was generated. Paste your own transcript and try again later.`],
+            warnings: [mediaOptions.transcript ? warning : `${normalized.body.error} Demo caption text was inserted because Gemini is temporarily unavailable. Replace it with the real transcript before generating the recap.`],
+            demoPlaceholder: !mediaOptions.transcript,
           });
         }
         const fallback = await createDemoMediaOutput({
