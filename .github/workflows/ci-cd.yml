@@ -48,7 +48,7 @@ jobs:
     environment: production
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
+      RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID || '297d4868-15b5-43cc-9a51-6b559bb1d3f6' }}
       RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT || 'production' }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID || '76aba715-5c7e-4612-95ae-004fecc4b8c0' }}
     steps:
@@ -63,9 +63,9 @@ jobs:
       - name: Install Railway CLI
         run: npm install --global @railway/cli
 
-      - name: Explain skipped deployment when secrets are missing
-        if: env.RAILWAY_TOKEN == '' || env.RAILWAY_PROJECT_ID == ''
-        run: echo "::warning::Add RAILWAY_TOKEN and RAILWAY_PROJECT_ID in GitHub Actions secrets to enable deployment."
+      - name: Explain skipped deployment when the Railway token is missing
+        if: env.RAILWAY_TOKEN == ''
+        run: echo "::warning::Add RAILWAY_TOKEN in GitHub Actions secrets to enable deployment. RAILWAY_PROJECT_ID already has a production default."
 
       - name: Deploy service
         if: env.RAILWAY_TOKEN != '' && env.RAILWAY_PROJECT_ID != ''
