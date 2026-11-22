@@ -20,7 +20,7 @@ function jobClass(status) {
   if (["APPROVED", "SCHEDULED", "PUBLISHED"].includes(status)) return "success";
   if (["UPLOADING", "PENDING_APPROVAL"].includes(status)) return "working";
   if (["FAILED", "CANCELLED"].includes(status)) return "danger";
-  return "";
+  return ""
 }
 
 function buildPublicationMetadata(project) {
