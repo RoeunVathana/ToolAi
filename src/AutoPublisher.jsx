@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowLeft, CalendarClock, Check, CirclePlay, Clock3, LockKeyhole, Send, ShieldCheck, Upload, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, Check, CirclePlay, Clock3, LockKeyhole, Send, ShieldCheck, Upload, WandSparkles, X } from "lucide-react";
 import "./auto-publisher.css";
 
 async function request(path, options = {}, token) {
@@ -20,6 +20,22 @@ function jobClass(status) {
   if (["UPLOADING", "PENDING_APPROVAL"].includes(status)) return "working";
   if (["FAILED", "CANCELLED"].includes(status)) return "danger";
   return "";
+}
+
+function buildPublicationMetadata(project) {
+  const title = String(project?.title || "").trim();
+  const topic = String(project?.topic || "").trim();
+  const script = String(project?.script || "").replace(/\s+/g, " ").trim();
+  const excerpt = script ? `${script.slice(0, 420)}${script.length > 420 ? "…" : ""}` : "";
+  const description = [
+    title ? `សម្រាយរឿង៖ ${title}` : "សម្រាយរឿងជាភាសាខ្មែរ",
+    topic ? `ប្រធានបទ៖ ${topic}` : "",
+    excerpt,
+    "សូមចូលរួមទស្សនា និងតាមដានវីដេអូថ្មីៗរបស់យើង។",
+    "#សម្រាយរឿង #រឿងចិន #ភាសាខ្មែរ",
+  ].filter(Boolean).join("\n\n");
+  const tags = ["សម្រាយរឿង", "រឿងចិន", "ភាសាខ្មែរ", topic].filter(Boolean).join(", ");
+  return { title, description, tags };
 }
 
 function ProviderState({ provider, onChange, busy }) {
@@ -64,7 +80,24 @@ export default function AutoPublisher({ onBack }) {
     if (failed && results.every((result) => result.status === "rejected")) setError(failed.reason?.message || "Publishing center could not load.");
   }
   useEffect(() => { load(); }, []);
-  function setField(name, value) { setForm((current) => ({ ...current, [name]: value })); }
+  function setField(name, value) {
+    setForm((current) => ({ ...current, [name]: value }));
+  }
+
+  function handleProjectChange(projectId) {
+    const project = completedProjects.find((item) => item.id === projectId);
+    const metadata = buildPublicationMetadata(project);
+    setForm((current) => ({ ...current, projectId, ...metadata }));
+    setError("");
+    setNotice(project ? "Publication metadata filled from the selected project. Review it before approval." : "");
+  }
+
+  function fillMetadata() {
+    const project = completedProjects.find((item) => item.id === form.projectId);
+    if (!project) return setError("Choose a completed rendered project first.");
+    setForm((current) => ({ ...current, ...buildPublicationMetadata(project) }));
+    setNotice("Title, description, and tags were filled from the project. Review them before approval.");
+  }
 
   async function changeConnection(platform, id) {
     if (!id) return;
@@ -84,7 +117,7 @@ export default function AutoPublisher({ onBack }) {
     try {
       const data = await request("/api/v1/publishing/demo-project", { method: "POST" }, token);
       setProjects((current) => [data.project, ...current.filter((item) => item.id !== data.project.id)]);
-      setForm((current) => ({ ...current, projectId: data.project.id, title: "ToolAiMe free demo test", description: "A free demo video used to test the ToolAiMe publishing workflow.", tags: "toolaime, demo, test", privacyStatus: "public" }));
+      setForm((current) => ({ ...current, projectId: data.project.id, ...buildPublicationMetadata(data.project), privacyStatus: "public" }));
       setNotice("Free demo MP4 is ready. Review the details, confirm your rights, and add it to the approval queue.");
     } catch (demoError) { setError(demoError.message); } finally { setDemoBusy(false); }
   }
@@ -120,12 +153,12 @@ export default function AutoPublisher({ onBack }) {
     <div className="publisher-grid">
       <form className="card publisher-card" onSubmit={createDraft}>
         <div className="publisher-card-heading"><div><span className="eyebrow">1 · CREATE DRAFT</span><h2>Prepare a publication</h2></div><LockKeyhole size={19} /></div>
-        <label className="field"><span>Rendered project</span><select value={form.projectId} onChange={(event) => setField("projectId", event.target.value)}><option value="">Choose a completed MP4</option>{completedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
+        <label className="field"><span>Rendered project</span><select value={form.projectId} onChange={(event) => handleProjectChange(event.target.value)}><option value="">Choose a completed MP4</option>{completedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
         {!completedProjects.length && <div className="publisher-empty"><AlertTriangle size={16} /><span>Render a project first. Only completed MP4 files can enter the publishing queue.</span><button className="button secondary" type="button" onClick={createDemoProject} disabled={demoBusy}>{demoBusy ? <span className="spinner" /> : "Create free demo MP4"}</button></div>}
         <div className="publisher-form-grid"><label className="field"><span>Platform</span><select value={form.platform} onChange={(event) => setField("platform", event.target.value)}><option value="YOUTUBE">YouTube</option><option value="FACEBOOK">Facebook Page</option></select></label><label className="field"><span>Privacy</span><select value={form.privacyStatus} onChange={(event) => setField("privacyStatus", event.target.value)}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label></div>
-        <label className="field"><span>Title</span><input value={form.title} maxLength={100} onChange={(event) => setField("title", event.target.value)} placeholder="Publication title" /></label>
-        <label className="field"><span>Description</span><textarea value={form.description} maxLength={5000} onChange={(event) => setField("description", event.target.value)} placeholder="Add a clear description…" /></label>
-        <label className="field"><span>Tags</span><input value={form.tags} maxLength={500} onChange={(event) => setField("tags", event.target.value)} placeholder="khmer, story recap, ..." /></label>
+        <label className="field"><span className="publisher-field-label"><span>Title</span><button className="publisher-inline-action" type="button" onClick={fillMetadata} disabled={!form.projectId}><WandSparkles size={13} /> Auto-fill</button></span><input value={form.title} maxLength={100} onChange={(event) => setField("title", event.target.value)} placeholder="Publication title" /></label>
+        <label className="field"><span className="publisher-field-label"><span>Description</span><button className="publisher-inline-action" type="button" onClick={fillMetadata} disabled={!form.projectId}><WandSparkles size={13} /> From project</button></span><textarea value={form.description} maxLength={5000} onChange={(event) => setField("description", event.target.value)} placeholder="Your project description will be sent to YouTube or Facebook Page." /><small className="publisher-copy-note">This becomes the YouTube video description or Facebook Page caption. Review it before approval.</small></label>
+        <label className="field"><span className="publisher-field-label"><span>Tags</span><button className="publisher-inline-action" type="button" onClick={fillMetadata} disabled={!form.projectId}><WandSparkles size={13} /> Add tags</button></span><input value={form.tags} maxLength={500} onChange={(event) => setField("tags", event.target.value)} placeholder="khmer, story recap, ..." /></label>
         <label className="field"><span><span><CalendarClock size={14} /> Schedule (optional)</span><em>{config?.timezone || "Asia/Phnom_Penh"}</em></span><input type="datetime-local" value={form.scheduledAt} onChange={(event) => setField("scheduledAt", event.target.value)} /></label>
         <label className="checkbox-field rights-check"><input type="checkbox" checked={form.rightsVerified} onChange={(event) => setField("rightsVerified", event.target.checked)} /><span>I have permission to publish the video and its source media.</span></label>
         <div className="publisher-provider-note"><span className={provider?.canPublish ? "status-dot" : "status-dot muted-dot"} />{provider?.message || "Checking provider configuration…"}</div>
