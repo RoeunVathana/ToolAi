@@ -1443,12 +1443,12 @@ function shouldUseDemoVideoFallback(error) {
 function demoVideoWarning(error) {
   const message = String(error?.message || error || "");
   if (/quota|rate limit|free tier|billing|limit/i.test(message)) {
-    return "Live Gemini video access or quota is unavailable. The MP4 shown is only a test-pattern demo, not an AI action video; do not publish it. Add paid video access or use an uploaded MP4 instead.";
+    return "Live Gemini video access or quota is unavailable. No video was created. Add paid video access or use an uploaded MP4 instead.";
   }
   if (/model|not found|not available|unsupported/i.test(message)) {
-    return "The configured Gemini video model is unavailable. The MP4 shown is only a test-pattern demo, not an AI action video; check the model and retry live generation.";
+    return "The configured Gemini video model is unavailable. No video was created. Check the model and retry live generation.";
   }
-  return "Gemini could not finish the live video request. The MP4 shown is only a test-pattern demo, not an AI action video; retry live generation later.";
+  return "Gemini could not finish the live video request. No video was created; retry live generation later.";
 }
 
 function serializeGenerationJob(job) {
@@ -1504,16 +1504,11 @@ function startGenerationJob(payload) {
       Object.assign(job, await generateGeminiScenes(payload), { status: "completed", updatedAt: Date.now() });
     } catch (error) {
       if (shouldUseDemoVideoFallback(error)) {
-        const scenes = createDemoScenes(payload.sceneCount, payload.duration);
-        const previewVideoUrl = await ensureDemoPreviewVideo();
         Object.assign(job, {
-          mode: "demo",
-          status: "completed",
-          warning: demoVideoWarning(error),
-          scenes,
-          previewVideoUrl,
-          totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0),
-          sceneCount: scenes.length,
+          mode: "gemini",
+          status: "failed",
+          error: demoVideoWarning(error),
+          errorCode: "GEMINI_VIDEO_UNAVAILABLE",
           updatedAt: Date.now(),
         });
       } else {
@@ -1540,9 +1535,10 @@ app.post("/api/generate", async (req, res) => {
       return res.status(400).json({ error: "Choose another AI tool, export its MP4, and use Use an existing video below to continue publishing." });
     }
     if (!hasGeminiConfig()) {
-      const scenes = createDemoScenes(sceneCount, duration);
-      const previewVideoUrl = await ensureDemoPreviewVideo();
-      return res.json({ mode: "demo", message: "Demo scenes ready. Add GEMINI_API_KEY to generate real Gemini clips.", scenes, previewVideoUrl, totalDuration: scenes.reduce((total, scene) => total + scene.duration, 0), sceneCount: scenes.length });
+      return res.status(503).json({
+        error: "Gemini video generation is not configured on the server. Add GEMINI_API_KEY and retry, or upload an MP4 instead.",
+        code: "GEMINI_API_NOT_CONFIGURED",
+      });
     }
     const job = startGenerationJob({ prompt, sceneCount, duration, textProvider, suppliedStoryPlan });
     return res.status(202).json(serializeGenerationJob(job));
