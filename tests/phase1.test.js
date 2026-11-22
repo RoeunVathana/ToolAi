@@ -83,9 +83,11 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   const mediaDir = await fs.mkdtemp(path.join(os.tmpdir(), "toolaime-phase1-"));
   const imagePath = path.join(mediaDir, "sample.png");
   const audioPath = path.join(mediaDir, "sample.wav");
+  const musicPath = path.join(mediaDir, "music.wav");
   const videoPath = path.join(mediaDir, "sample.mp4");
   await execFileAsync(ffmpegStatic, ["-y", "-f", "lavfi", "-i", "color=c=0x91a8e6:s=640x360", "-frames:v", "1", imagePath]);
   await execFileAsync(ffmpegStatic, ["-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000", "-t", "2", audioPath]);
+  await execFileAsync(ffmpegStatic, ["-y", "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=48000", "-t", "1", musicPath]);
   await execFileAsync(ffmpegStatic, ["-y", "-f", "lavfi", "-i", "color=c=0x91a8e6:s=640x360", "-t", "1", "-r", "10", "-pix_fmt", "yuv420p", videoPath]);
   const imageForm = new FormData(); imageForm.append("file", new Blob([await fs.readFile(imagePath)], { type: "image/png" }), "sample.png");
   const imageUpload = await request(`/api/v1/projects/${projectId}/media`, { method: "POST", body: imageForm }, ownerToken);
@@ -94,6 +96,10 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   const audioUpload = await request(`/api/v1/projects/${projectId}/media`, { method: "POST", body: audioForm }, ownerToken);
   assert.equal(audioUpload.response.status, 201);
   assert.equal(audioUpload.data.asset.type, "AUDIO");
+  const musicForm = new FormData(); musicForm.append("file", new Blob([await fs.readFile(musicPath)], { type: "audio/wav" }), "music.wav"); musicForm.append("role", "MUSIC");
+  const musicUpload = await request(`/api/v1/projects/${projectId}/media`, { method: "POST", body: musicForm }, ownerToken);
+  assert.equal(musicUpload.response.status, 201);
+  assert.equal(musicUpload.data.asset.type, "MUSIC");
   const videoForm = new FormData(); videoForm.append("file", new Blob([await fs.readFile(videoPath)], { type: "video/mp4" }), "sample.mp4");
   const videoUpload = await request(`/api/v1/projects/${projectId}/media`, { method: "POST", body: videoForm }, ownerToken);
   assert.equal(videoUpload.response.status, 201);
@@ -136,6 +142,8 @@ test("Phase 1 auth, ownership, media upload, render, preview, and download", asy
   const probe = await execFileAsync(ffprobeStatic.path, ["-v", "error", "-show_entries", "format=format_name,duration", "-of", "json", outputPath]);
   assert.match(probe.stdout, /mp4/);
   assert.ok(Number(JSON.parse(probe.stdout).format.duration) > 0);
+  const audioProbe = await execFileAsync(ffprobeStatic.path, ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name", "-of", "default=noprint_wrappers=1:nokey=1", outputPath]);
+  assert.match(audioProbe.stdout.trim(), /aac/);
   const download = await request(`/api/v1/render-jobs/${job.id}/download`, {}, ownerToken);
   assert.equal(download.response.status, 200);
   const deleted = await request(`/api/v1/projects/${projectId}`, { method: "DELETE" }, ownerToken);

@@ -6,7 +6,7 @@ The delivery order follows the attached ChatGPT project script. The existing ver
 
 Status: `DONE` for the working baseline; `IN_PROGRESS` for target-architecture alignment.
 
-Completed baseline: register/login, create a project, write or generate a Khmer script, upload images, narration, and permitted MP4 source media, render a real H.264/AAC MP4 with FFmpeg, preview it, and download it with ownership checks. Verified remotely with the seeded admin account and FFprobe.
+Completed baseline: register/login, create a project, write or generate a Khmer script, upload images, narration, optional background music, and permitted MP4 source media, render a real H.264/AAC MP4 with FFmpeg, preview it, and download it with ownership checks. Background music is looped and mixed below the narration only when the creator supplies an MP3/WAV file.
 
 Foundation checklist from the script:
 

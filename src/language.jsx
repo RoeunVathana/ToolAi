@@ -32,6 +32,17 @@ const authLabels = {
   km: { loading: "កំពុងផ្ទុក ToolAiMe…", authKicker: "ស្ទូឌីយោស្វ័យប្រវត្តិវីដេអូ AI", authHeadline: "ពីគំនិតខ្មែរ ទៅជាវីដេអូដែលបានបញ្ចប់។", authDescription: "បង្កើត រៀបចំ និងបង្កើតរឿងដើមក្នុងកន្លែងធ្វើការតែមួយ។", authPhase: "កន្លែងធ្វើការដំណាក់កាល ១", authFlow: "ស្គ្រីប → មេឌៀ → MP4", welcomeBack: "សូមស្វាគមន៍ត្រឡប់មកវិញ", createWorkspace: "បង្កើតកន្លែងធ្វើការរបស់អ្នក", signInDescription: "ចូល ដើម្បីបន្តបង្កើត។", startProjectDescription: "ចាប់ផ្តើមគម្រោងវីដេអូខ្មែរដំបូងរបស់អ្នក។", name: "ឈ្មោះ", yourName: "ឈ្មោះរបស់អ្នក", email: "អ៊ីមែល", password: "ពាក្យសម្ងាត់", passwordHint: "យ៉ាងហោចណាស់ ៨ តួអក្សរ", signIn: "ចូល", createAccount: "បង្កើតគណនី", newToApp: "មិនទាន់ប្រើ ToolAiMe?", alreadyAccount: "មានគណនីរួចហើយ?", accountScope: "គម្រោង និងឯកសាររបស់អ្នកត្រូវបានរក្សាទុកក្នុងគណនីរបស់អ្នក។", passwordError: "ប្រើពាក្យសម្ងាត់ដែលមានយ៉ាងហោចណាស់ ៨ តួអក្សរ។" }
 };
 
+const mediaLabels = {
+  en: {
+    backgroundMusic: "Background music",
+    backgroundMusicHint: "Optional MP3 or WAV · mixed quietly under narration",
+  },
+  km: {
+    backgroundMusic: "សំឡេងភ្លេងផ្ទៃខាងក្រោយ",
+    backgroundMusicHint: "ជាជម្រើស MP3 ឬ WAV · លាយស្រាលក្រោមសំឡេងអាន",
+  },
+};
+
 export function text(language, key, fallback = key) {
-  return authLabels[language]?.[key] || extraLabels[language]?.[key] || labels[language]?.[key] || authLabels.en[key] || extraLabels.en[key] || labels.en[key] || fallback;
+  return authLabels[language]?.[key] || extraLabels[language]?.[key] || mediaLabels[language]?.[key] || labels[language]?.[key] || authLabels.en[key] || extraLabels.en[key] || mediaLabels.en[key] || labels.en[key] || fallback;
 }

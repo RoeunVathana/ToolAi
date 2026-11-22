@@ -352,7 +352,7 @@ function concatPath(filePath) {
   return filePath.replace(/\\/g, "/").replace(/'/g, "'\\''");
 }
 
-async function renderProject({ jobId, project, images, audio, outputPath, ffmpegCommand, ffprobeCommand }) {
+async function renderProject({ jobId, project, images, audio, music, outputPath, ffmpegCommand, ffprobeCommand }) {
   const tempRoot = path.dirname(outputPath);
   const manifestPath = path.join(tempRoot, `${jobId}.txt`);
   try {
@@ -370,14 +370,30 @@ async function renderProject({ jobId, project, images, audio, outputPath, ffmpeg
     const isPortrait = project.aspectRatio === "9:16";
     const [width, height] = project.resolution.split("x").map(Number);
     const filter = `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=black`;
-    await execFileAsync(ffmpegCommand, [
+    const renderArgs = [
       "-y", "-f", "concat", "-safe", "0", "-i", manifestPath,
       "-i", audio.storagePath,
+    ];
+    if (music) {
+      // Loop the user-provided music so short tracks still cover the narration.
+      // The music is intentionally mixed below the narration instead of replacing it.
+      renderArgs.push("-stream_loop", "-1", "-i", music.storagePath);
+    }
+    renderArgs.push(
       "-vf", filter,
       "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
-      "-map", "0:v:0", "-map", "1:a:0", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
-      "-t", String(duration), "-movflags", "+faststart", outputPath,
-    ], { maxBuffer: 1024 * 1024 * 4 });
+      "-map", "0:v:0",
+    );
+    if (music) {
+      renderArgs.push(
+        "-filter_complex", "[1:a]aresample=48000,volume=1.0[narration];[2:a]aresample=48000,volume=0.16[music];[narration][music]amix=inputs=2:duration=first:dropout_transition=2[aout]",
+        "-map", "[aout]", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+      );
+    } else {
+      renderArgs.push("-map", "1:a:0", "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2");
+    }
+    renderArgs.push("-t", String(duration), "-movflags", "+faststart", "-shortest", outputPath);
+    await execFileAsync(ffmpegCommand, renderArgs, { maxBuffer: 1024 * 1024 * 4 });
     await prisma.renderJob.update({ where: { id: jobId }, data: { status: "COMPLETED", progress: 100, outputPath, completedAt: new Date() } });
     await prisma.videoProject.update({ where: { id: project.id }, data: { status: "COMPLETED" } });
     return { duration, orientation: isPortrait ? "portrait" : "landscape" };
@@ -1042,9 +1058,12 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     try {
       const project = await ownedProject(req.params.id, req.userId);
       if (!project) return res.status(404).json({ error: "Project not found." });
-      if (!req.file) return res.status(400).json({ error: "Choose an image, MP4 source video, or narration file." });
+      if (!req.file) return res.status(400).json({ error: "Choose an image, MP4 source video, narration, or background music file." });
       const extension = safeExtension(req.file.originalname);
-      const type = allowedAudioExtensions.has(extension) ? "AUDIO" : allowedVideoExtensions.has(extension) ? "VIDEO" : "IMAGE";
+      const requestedRole = String(req.body?.role || "").toUpperCase();
+      const type = requestedRole === "MUSIC" && allowedAudioExtensions.has(extension)
+        ? "MUSIC"
+        : allowedAudioExtensions.has(extension) ? "AUDIO" : allowedVideoExtensions.has(extension) ? "VIDEO" : "IMAGE";
       const projectDir = path.join(storageRoot, project.id);
       await fs.mkdir(projectDir, { recursive: true });
       const storedName = `${crypto.randomUUID()}${extension}`;
@@ -1105,9 +1124,10 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       const input = z.object({ aspectRatio: z.enum(["16:9", "9:16"]).default(project.aspectRatio), resolution: z.enum(["1920x1080", "1080x1920", "1280x720", "720x1280"]).default(project.resolution) }).parse(req.body || {});
       const images = project.mediaAssets.filter((asset) => asset.type === "IMAGE").sort((a, b) => a.displayOrder - b.displayOrder);
       const audio = project.mediaAssets.find((asset) => asset.type === "AUDIO");
+      const music = project.mediaAssets.find((asset) => asset.type === "MUSIC");
       if (!images.length) return res.status(400).json({ error: "Upload at least one image before rendering." });
       if (!audio) return res.status(400).json({ error: "Upload one narration MP3 or WAV before rendering." });
-      for (const asset of [...images, audio]) {
+      for (const asset of [...images, audio, ...(music ? [music] : [])]) {
         if (!fsSync.existsSync(ensureContained(storageRoot, asset.storagePath))) return res.status(400).json({ error: `Missing media file: ${asset.filename}` });
       }
       const updatedProject = await prisma.videoProject.update({ where: { id: project.id }, data: { aspectRatio: input.aspectRatio, resolution: input.resolution, status: "RENDERING" } });
@@ -1115,7 +1135,7 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       const renderDir = path.join(storageRoot, project.id, "renders");
       await fs.mkdir(renderDir, { recursive: true });
       const outputPath = ensureContained(storageRoot, path.join(renderDir, `${job.id}.mp4`));
-      void renderProject({ jobId: job.id, project: updatedProject, images, audio, outputPath, ffmpegCommand, ffprobeCommand });
+      void renderProject({ jobId: job.id, project: updatedProject, images, audio, music, outputPath, ffmpegCommand, ffprobeCommand });
       return res.status(202).json({ job: { ...job, status: "QUEUED", progress: 0 } });
     } catch (error) {
       return res.status(error?.name === "ZodError" ? 400 : 500).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Render could not be started." });

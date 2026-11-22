@@ -392,7 +392,7 @@ function createGenerationPlan(sceneCount, duration) {
 }
 
 const audioDirection =
-  "Audio direction: include synchronized cheerful original toy sound effects, soft plastic movement sounds, light kitchen clinks, and gentle original background music. No copyrighted songs, logos, or spoken dialogue.";
+  "Audio direction: the finished clip MUST contain an audible audio track with synchronized cheerful original toy sound effects, soft plastic movement sounds, light kitchen clinks, and gentle original background music. Keep music below the sound effects. Do not return a silent video. No copyrighted songs, logos, or spoken dialogue.";
 
 function createStoryPlanSchema(sceneCount) {
   return {
@@ -691,6 +691,10 @@ async function generateGeminiClip(prompt, index, total, duration) {
     }
     if (Date.now() >= deadline) throw new Error("Gemini video processing timed out. Try a shorter video or try again later.");
     await ai.files.download({ file: fileName, downloadPath: outputPath });
+  }
+  if (!(await hasAudioStream(outputPath))) {
+    await fs.rm(outputPath, { force: true });
+    throw new Error("Gemini returned a video without an audio track. No silent video was saved; retry with a prompt that requests original music and sound effects.");
   }
   return {
     id: `scene-${Date.now()}-${index}`,

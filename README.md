@@ -2,7 +2,7 @@
 
 ToolAiMe is a local-first AI video workspace. Phase 1 implements:
 
-`Register/Login → Create Project → Generate or edit Khmer script → Upload images and narration → FFmpeg MP4 render → Preview → Download`
+`Register/Login → Create Project → Generate or edit Khmer script → Upload images, narration, and optional background music → FFmpeg MP4 render → Preview → Download`
 
 The existing Gemini scene-generation and social-publishing code remains available, while the new `/api/v1` routes and dashboard focus on the verified local workflow. Khmer AI Voice is now an active narration studio, and Auto Publisher is now an active approval center for completed local renders. External publication remains configuration-gated and is never reported as successful without provider confirmation.
 
@@ -100,7 +100,7 @@ Without Gemini credentials, users can still register, create projects, write/edi
 - Voice files: `GET /api/v1/voice/narrations/:id/preview` and `GET /api/v1/voice/narrations/:id/download`; all voice routes are JWT-protected and user-scoped.
 - Story recap timeline: `GET /api/v1/voice/timelines`, `POST /api/v1/voice/timelines`, and protected video/audio/SRT preview/download routes. Upload an authorized MP4, paste/upload SRT, generate Khmer narration or supply MP3/WAV, preview the exported MP4, download the SRT, and optionally attach the exported video to a project.
 - Auto Publisher: `GET /api/v1/publishing/config`, `GET /api/v1/publishing/jobs`, `POST /api/v1/publishing/jobs`, and protected `approve`, `cancel`, and `publish` actions. Completed rendered MP4s can be queued with metadata, rights confirmation, an approval gate, and a timezone-aware schedule draft. The `publish` action refuses to run until official provider credentials are configured and the provider adapter is verified; it does not fake publication.
-- Media: `POST /api/v1/projects/:id/media`, `GET /api/v1/projects/:id/media`, `PATCH/DELETE /api/v1/media/:id`, `GET /api/v1/media/:id/preview`; accepts JPG, PNG, WebP, MP4, MP3, and WAV. MP4 files are stored and previewable as source assets; Phase 1 rendering still uses image assets plus narration.
+- Media: `POST /api/v1/projects/:id/media`, `GET /api/v1/projects/:id/media`, `PATCH/DELETE /api/v1/media/:id`, `GET /api/v1/media/:id/preview`; accepts JPG, PNG, WebP, MP4, MP3, and WAV. Send `role=MUSIC` with an MP3/WAV upload to save optional background music. MP4 files are stored and previewable as source assets; Phase 1 rendering uses image assets plus narration and mixes background music quietly under the narration when supplied.
 - Rendering: `POST /api/v1/projects/:id/render`, `GET /api/v1/render-jobs/:id`, `GET /api/v1/render-jobs/:id/download`
 
 All relevant routes require a Bearer JWT and enforce project ownership.
