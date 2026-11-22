@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, CalendarClock, Check, CirclePlay, Clock3, LockKeyhole, Send, ShieldCheck, Upload, WandSparkles, X } from "lucide-react";
 import "./auto-publisher.css";
+import { useLanguage, text } from "./language.jsx";
 
 async function request(path, options = {}, token) {
   const headers = new Headers(options.headers || {});
@@ -38,29 +39,31 @@ function buildPublicationMetadata(project) {
   return { title, description, tags };
 }
 
-function ProviderState({ provider, onChange, busy }) {
-  if (!provider) return <span className="publisher-provider unknown">Loading provider status…</span>;
-  const label = provider.canPublish ? "Connected" : provider.connected ? "Needs verification" : "Not configured";
-  const action = provider.canPublish ? "Add / switch" : "Connect";
+function ProviderState({ language, provider, onChange, busy }) {
+  if (!provider) return <span className="publisher-provider unknown">{text(language, "loadingProvider")}</span>;
+  const label = provider.canPublish ? text(language, "connected") : provider.connected ? text(language, "needsVerification") : text(language, "notConfigured");
+  const action = provider.canPublish ? text(language, "addSwitch") : text(language, "connect");
   const href = provider.label === "YouTube" ? "/api/auth/youtube" : "/api/auth/facebook";
   const isYoutube = provider.label === "YouTube";
   const options = isYoutube ? (provider.channels || []) : (provider.pages || []);
   const activeId = isYoutube ? provider.activeChannelId : provider.activePageId;
   return <div className="publisher-provider-wrap">
     <div className="publisher-provider-line"><span className={`publisher-provider ${provider.canPublish ? "ready" : "blocked"}`}><i />{label}</span><a className="publisher-connect" href={href}>{action}</a></div>
-    {options.length > 0 && <label className="publisher-provider-selector"><span>{isYoutube ? "Publishing channel" : "Publishing Page"}</span><select value={activeId || ""} onChange={(event) => onChange(event.target.value)} disabled={busy || options.length < 2}>{options.map((option) => <option key={option.id} value={option.id}>{isYoutube ? option.title : option.name}{option.handle ? ` · ${option.handle}` : ""}</option>)}</select></label>}
-    {options.length > 1 && <span className="publisher-provider-hint">Change the destination used for new publications.</span>}
-    {options.length === 1 && <span className="publisher-provider-hint">Only one {isYoutube ? "channel" : "Page"} is connected. Use Add / switch to connect another.</span>}
+    {options.length > 0 && <label className="publisher-provider-selector"><span>{isYoutube ? text(language, "publishingChannel") : text(language, "publishingPage")}</span><select value={activeId || ""} onChange={(event) => onChange(event.target.value)} disabled={busy || options.length < 2}>{options.map((option) => <option key={option.id} value={option.id}>{isYoutube ? option.title : option.name}{option.handle ? ` · ${option.handle}` : ""}</option>)}</select></label>}
+    {options.length > 1 && <span className="publisher-provider-hint">{text(language, "changeDestination")}</span>}
+    {options.length === 1 && <span className="publisher-provider-hint">{text(language, "onlyOneDestination")}</span>}
   </div>;
 }
 
 export default function AutoPublisher({ onBack, selectedProjectId = "" }) {
   const token = localStorage.getItem("toolaime-token") || "";
+  const { language } = useLanguage();
   const [projects, setProjects] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [config, setConfig] = useState(null);
   const [form, setForm] = useState({ projectId: "", platform: "YOUTUBE", title: "", description: "", tags: "", privacyStatus: "private", scheduledAt: "", rightsVerified: false });
   const [busy, setBusy] = useState(false);
+  const [metadataBusy, setMetadataBusy] = useState(false);
   const [busyJob, setBusyJob] = useState("");
   const [demoBusy, setDemoBusy] = useState(false);
   const [connectionBusy, setConnectionBusy] = useState("");
@@ -105,6 +108,21 @@ export default function AutoPublisher({ onBack, selectedProjectId = "" }) {
     if (!project) return setError("Choose a completed rendered project first.");
     setForm((current) => ({ ...current, ...buildPublicationMetadata(project) }));
     setNotice("Title, description, and tags were filled from the project. Review them before approval.");
+  }
+
+  async function generateAiMetadata() {
+    const project = completedProjects.find((item) => item.id === form.projectId);
+    if (!project) return setError("Choose a completed rendered project first.");
+    setMetadataBusy(true); setError(""); setNotice("");
+    try {
+      const data = await request("/api/v1/publishing/generate-metadata", { method: "POST", body: JSON.stringify({ projectId: project.id, platform: form.platform }) }, token);
+      setForm((current) => ({ ...current, title: data.title, description: data.description, tags: data.tags }));
+      setNotice(`Gemini generated the ${form.platform === "YOUTUBE" ? "YouTube" : "Facebook"} title, description, and tags. Review them before approval.`);
+    } catch (metadataError) {
+      const fallback = buildPublicationMetadata(project);
+      setForm((current) => ({ ...current, ...fallback }));
+      setNotice(`${metadataError.message} Project metadata was filled as a manual fallback.`);
+    } finally { setMetadataBusy(false); }
   }
 
   async function changeConnection(platform, id) {
@@ -153,14 +171,14 @@ export default function AutoPublisher({ onBack, selectedProjectId = "" }) {
   }
 
   return <section className="publisher-shell">
-    <div className="publisher-top"><button className="text-button" onClick={onBack}><ArrowLeft size={15} /> Back to overview</button><span className="phase-pill"><CirclePlay size={14} /> Publishing center · Live</span></div>
-    <div className="page-intro compact publisher-intro"><div><span className="eyebrow">AUTO PUBLISHER</span><h1>Approve before it goes live.</h1><p>Queue a finished MP4, verify your rights, prepare platform metadata, and keep publication under your control.</p></div><div className="publisher-safety"><ShieldCheck size={17} /> Approval required</div></div>
+    <div className="publisher-top"><button className="text-button" onClick={onBack}><ArrowLeft size={15} /> {text(language, "backOverview")}</button><span className="phase-pill"><CirclePlay size={14} /> {text(language, "publisherSource")} · Live</span></div>
+    <div className="page-intro compact publisher-intro"><div><span className="eyebrow">{text(language, "publisherSetup")}</span><h1>{language === "km" ? "ពិនិត្យមុនបោះផ្សាយ។" : "Approve before it goes live."}</h1><p>{text(language, "publisherDescription")}</p></div><div className="publisher-safety"><ShieldCheck size={17} /> {language === "km" ? "ត្រូវការអនុម័ត" : "Approval required"}</div></div>
     {error && <div className="alert error"><X size={16} />{error}<button onClick={() => setError("")}><X size={15} /></button></div>}
     {notice && <div className="alert success"><Check size={16} />{notice}<button onClick={() => setNotice("")}><X size={15} /></button></div>}
-    <div className="publisher-platforms"><div className="publisher-platform card"><div className="publisher-platform-icon youtube">▶</div><div><strong>YouTube</strong><span>Official channel upload</span></div><ProviderState provider={config?.youtube} onChange={(id) => changeConnection("YOUTUBE", id)} busy={connectionBusy === "YOUTUBE"} /></div><div className="publisher-platform card"><div className="publisher-platform-icon facebook">f</div><div><strong>Facebook Page</strong><span>Page video or Reel</span></div><ProviderState provider={config?.facebook} onChange={(id) => changeConnection("FACEBOOK", id)} busy={connectionBusy === "FACEBOOK"} /></div></div>
+    <div className="publisher-platforms"><div className="publisher-platform card"><div className="publisher-platform-icon youtube">▶</div><div><strong>YouTube</strong><span>{language === "km" ? "បញ្ចូលទៅឆានែលផ្លូវការ" : "Official channel upload"}</span></div><ProviderState language={language} provider={config?.youtube} onChange={(id) => changeConnection("YOUTUBE", id)} busy={connectionBusy === "YOUTUBE"} /></div><div className="publisher-platform card"><div className="publisher-platform-icon facebook">f</div><div><strong>Facebook Page</strong><span>{language === "km" ? "វីដេអូ ឬ Reel របស់ទំព័រ" : "Page video or Reel"}</span></div><ProviderState language={language} provider={config?.facebook} onChange={(id) => changeConnection("FACEBOOK", id)} busy={connectionBusy === "FACEBOOK"} /></div></div>
     <div className="publisher-grid">
       <form className="card publisher-card" onSubmit={createDraft}>
-        <div className="publisher-card-heading"><div><span className="eyebrow">1 · CREATE DRAFT</span><h2>Prepare a publication</h2></div><LockKeyhole size={19} /></div>
+        <div className="publisher-card-heading"><div><span className="eyebrow">1 · CREATE DRAFT</span><h2>Prepare a publication</h2></div><div className="publisher-heading-actions"><button className="publisher-ai-action" type="button" onClick={generateAiMetadata} disabled={metadataBusy || !form.projectId}>{metadataBusy ? <span className="spinner" /> : <WandSparkles size={14} />} {metadataBusy ? "Generating…" : "Generate with Gemini"}</button><LockKeyhole size={19} /></div></div>
         <label className="field"><span>Rendered project</span><select value={form.projectId} onChange={(event) => handleProjectChange(event.target.value)}><option value="">Choose a completed MP4</option>{completedProjects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label>
         {!completedProjects.length && <div className="publisher-empty"><AlertTriangle size={16} /><span>Render a project first. Only completed MP4 files can enter the publishing queue.</span><button className="button secondary" type="button" onClick={createDemoProject} disabled={demoBusy}>{demoBusy ? <span className="spinner" /> : "Create free demo MP4"}</button></div>}
         <div className="publisher-form-grid"><label className="field"><span>Platform</span><select value={form.platform} onChange={(event) => setField("platform", event.target.value)}><option value="YOUTUBE">YouTube</option><option value="FACEBOOK">Facebook Page</option></select></label><label className="field"><span>Privacy</span><select value={form.privacyStatus} onChange={(event) => setField("privacyStatus", event.target.value)}><option value="private">Private</option><option value="unlisted">Unlisted</option><option value="public">Public</option></select></label></div>

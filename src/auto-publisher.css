@@ -30,6 +30,11 @@
 .publisher-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 2px; }
 .publisher-card-heading h2 { margin: 7px 0 0; color: var(--text); font-size: 21px; letter-spacing: -.045em; }
 .publisher-card-heading > svg { color: var(--accent); }
+.publisher-heading-actions { display: inline-flex; align-items: center; gap: 12px; }
+.publisher-heading-actions > svg { color: var(--accent); }
+.publisher-ai-action { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 1px solid rgba(215,239,135,.3); border-radius: 8px; color: var(--accent); background: rgba(215,239,135,.06); font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.publisher-ai-action:hover:not(:disabled) { border-color: rgba(215,239,135,.6); background: rgba(215,239,135,.12); }
+.publisher-ai-action:disabled { color: var(--muted); cursor: not-allowed; opacity: .72; }
 .publisher-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .publisher-card .field + .field { margin-top: 0; }
 .publisher-card textarea { min-height: 115px; }

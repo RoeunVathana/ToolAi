@@ -847,6 +847,43 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     return res.json({ config: await publishingConfig(getPublishingConfig) });
   });
 
+  app.post("/api/v1/publishing/generate-metadata", requireAuth, async (req, res) => {
+    try {
+      const input = z.object({
+        projectId: z.string().uuid(),
+        platform: z.enum(["YOUTUBE", "FACEBOOK"]).default("YOUTUBE"),
+      }).parse(req.body || {});
+      const project = await prisma.videoProject.findFirst({ where: { id: input.projectId, userId: req.userId } });
+      if (!project) return res.status(404).json({ error: "Project not found." });
+      if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: "Gemini metadata is not configured. Use the project fields manually.", code: "GEMINI_NOT_CONFIGURED" });
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const model = process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MODEL || "gemini-3.8-flash";
+      const prompt = [
+        "Create publication metadata for an original Chinese story recap video.",
+        `Destination platform: ${input.platform === "FACEBOOK" ? "Facebook Page" : "YouTube"}.`,
+        "Write a clear, clickable title under 100 characters, a natural Khmer description under 5000 characters, and 5 to 12 useful search tags.",
+        "Use only facts present in the project data. Do not invent characters, events, claims, links, or rights. Do not use markdown fences.",
+        "Return JSON only in this exact shape: {\"title\":\"...\",\"description\":\"...\",\"tags\":[\"...\"]}.",
+        `Project title: ${project.title}`,
+        `Topic: ${project.topic}`,
+        `Narration script: ${String(project.script || "").slice(0, 30000)}`,
+      ].join("\n\n");
+      const response = await withGeminiRetry(() => ai.models.generateContent({ model, contents: prompt }));
+      const raw = pickScriptText(response).replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      let parsed;
+      try { parsed = JSON.parse(raw); } catch { throw new Error("Gemini returned invalid publication metadata. Please use the project fields manually."); }
+      const title = String(parsed?.title || "").trim().slice(0, 100);
+      const description = String(parsed?.description || "").trim().slice(0, 5000);
+      const tags = Array.isArray(parsed?.tags) ? parsed.tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 12).join(", ") : "";
+      if (!title || !description || !tags) throw new Error("Gemini returned incomplete publication metadata. Please use the project fields manually.");
+      return res.json({ title, description, tags, provider: "gemini", model, status: "completed" });
+    } catch (error) {
+      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
+      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Gemini metadata generation failed.", code: error?.code || "GEMINI_METADATA_ERROR" });
+    }
+  });
+
   app.get("/api/v1/publishing/jobs", requireAuth, async (req, res) => {
     const jobs = await prisma.publishJob.findMany({
       where: { userId: req.userId },
