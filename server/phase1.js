@@ -813,6 +813,9 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       if (body.projectId) {
         const last = await prisma.mediaAsset.findFirst({ where: { projectId: body.projectId, type: "VIDEO" }, orderBy: { displayOrder: "desc" } });
         asset = await prisma.mediaAsset.create({ data: { projectId: body.projectId, type: "VIDEO", filename: `${body.title}.mp4`, storagePath: outputPath, mimeType: "video/mp4", size: (await fs.stat(outputPath)).size, displayOrder: (last?.displayOrder ?? -1) + 1 } });
+        const now = new Date();
+        await prisma.renderJob.create({ data: { projectId: body.projectId, status: "COMPLETED", progress: 100, outputPath, startedAt: now, completedAt: now } });
+        await prisma.videoProject.update({ where: { id: body.projectId }, data: { status: "COMPLETED", script: script || undefined } });
       }
       return res.status(201).json({ timeline: timelineResponse(timeline), asset: asset ? { ...asset, previewUrl: `/api/v1/media/${asset.id}/preview` } : null });
     } catch (error) {

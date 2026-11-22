@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ArrowLeft, Check, Download, FileText, Film, Home, Languages, Mic2, Moon, Sun, Upload, WandSparkles, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Download, FileText, Film, Home, Languages, Mic2, Moon, Sun, Upload, WandSparkles, X } from "lucide-react";
 import "./chinese-story-recap.css";
 import { useLanguage, text } from "./language.jsx";
 
@@ -17,7 +17,7 @@ async function request(path, options = {}, token) {
 
 function Spinner() { return <span className="spinner" aria-label="Loading" />; }
 
-export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme }) {
+export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onOpenPublisher }) {
   const token = localStorage.getItem("toolaime-token") || "";
   const { language, toggleLanguage } = useLanguage();
   const [catalog, setCatalog] = useState(null);
@@ -97,13 +97,32 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme }) {
     if (!videoFile) { setError("Choose the authorized Chinese MP4 before creating the recap video."); return; }
     if (!recap.trim()) { setError("Generate or write the recap before creating the video."); return; }
     setExportBusy(true);
+    let createdProjectId = "";
     try {
+      let targetProjectId = projectId;
+      if (!targetProjectId) {
+        const created = await request("/api/v1/projects", { method: "POST", body: JSON.stringify({
+          title: title.trim() || "Chinese story recap",
+          topic: `Chinese story recap · ${title.trim() || "Untitled story"}`,
+          language: targetLanguage,
+          durationMinutes: 1,
+          script: recap,
+        }) }, token);
+        targetProjectId = created.project.id;
+        createdProjectId = targetProjectId;
+        setProjectId(targetProjectId);
+        setProjects((current) => [created.project, ...current]);
+      }
       const form = new FormData();
       form.append("video", videoFile); form.append("title", title); form.append("voice", voice); form.append("script", recap);
-      if (projectId) form.append("projectId", projectId);
+      form.append("projectId", targetProjectId);
       const data = await request("/api/v1/voice/timelines", { method: "POST", body: form }, token);
       setTimeline(data.timeline); setNotice("Recap MP4 generated. Preview it before publishing.");
-    } catch (exportError) { setError(exportError.message); } finally { setExportBusy(false); }
+      if (targetProjectId && data.asset && onOpenPublisher) onOpenPublisher(targetProjectId);
+    } catch (exportError) {
+      if (createdProjectId) await request(`/api/v1/projects/${createdProjectId}`, { method: "DELETE" }, token).catch(() => {});
+      setError(exportError.message);
+    } finally { setExportBusy(false); }
   }
 
   function mediaUrl(url) { return url ? `${url}?token=${encodeURIComponent(token)}` : ""; }
@@ -135,7 +154,7 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme }) {
           {videoFile && !timeline && <div className="recap-video-hint"><WandSparkles size={14} /> {text(language, "readVideoHint", language === "km" ? "ចុច AI អានវីដេអូ ដើម្បីបញ្ចូលអត្ថបទចិនដោយស្វ័យប្រវត្តិ។" : "Click AI read video to fill the Chinese text automatically.")}</div>}
         </section>
         <form className="recap-panel recap-source-panel" onSubmit={generateRecap}><div className="recap-panel-heading"><div><span className="recap-kicker">SUBTITLE · SOURCE TEXT</span><h2>{text(language, "sourceText")}</h2></div><span className="recap-count">{sourceText.length.toLocaleString()} chars</span></div><textarea className="recap-source-editor" value={sourceText} onChange={(event) => setSourceText(event.target.value)} maxLength={50000} placeholder={text(language, "subtitleHint")} /><div className="recap-source-footer"><label className="recap-language-select"><Languages size={15} /><span>{text(language, "output")}</span><select value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)}><option value="km">{text(language, "outputKhmer")}</option><option value="en">{text(language, "outputEnglish")}</option></select></label><button className="recap-purple-button" type="submit" disabled={busy || !catalog?.configured}>{busy ? <Spinner /> : <><WandSparkles size={16} /> {text(language, "generateRecap")}</>}</button></div></form>
-        <section className="recap-panel recap-script-panel"><div className="recap-panel-heading"><div><span className="recap-kicker">AI RECAP SCRIPT</span><h2>{text(language, "recapScript")}</h2></div><span className="recap-count">{recap.length.toLocaleString()} chars</span></div><textarea className="recap-script-editor" value={recap} onChange={(event) => setRecap(event.target.value)} placeholder={text(language, "scriptHint")} /><div className="recap-action-bar"><span><span className="recap-ready-dot" />{videoFile ? text(language, "sourceReady") : text(language, "chooseSource")}</span><button className="recap-purple-button" type="button" onClick={exportRecap} disabled={exportBusy || !videoFile || !recap.trim()}>{exportBusy ? <Spinner /> : <><Upload size={16} /> {text(language, "generateVoice")}</>}</button>{timeline && <a className="recap-export-button" href={mediaUrl(timeline.downloadUrl)}><Download size={15} /> {text(language, "exportVideo")}</a>}</div></section>
+        <section className="recap-panel recap-script-panel"><div className="recap-panel-heading"><div><span className="recap-kicker">AI RECAP SCRIPT</span><h2>{text(language, "recapScript")}</h2></div><span className="recap-count">{recap.length.toLocaleString()} chars</span></div><textarea className="recap-script-editor" value={recap} onChange={(event) => setRecap(event.target.value)} placeholder={text(language, "scriptHint")} /><div className="recap-action-bar"><span><span className="recap-ready-dot" />{videoFile ? text(language, "sourceReady") : text(language, "chooseSource")}</span><button className="recap-purple-button" type="button" onClick={exportRecap} disabled={exportBusy || !videoFile || !recap.trim()}>{exportBusy ? <Spinner /> : <><Upload size={16} /> {text(language, "generateVoice")}</>}</button>{timeline && <a className="recap-export-button" href={mediaUrl(timeline.downloadUrl)}><Download size={15} /> {text(language, "exportVideo")}</a>}{timeline && onOpenPublisher && <button className="recap-export-button recap-publish-button" type="button" onClick={() => onOpenPublisher(timeline.projectId || projectId)}><ArrowRight size={15} /> Open Auto Publisher</button>}</div></section>
       </main>
     </div>
     <div className="recap-reference-footnote"><Mic2 size={15} /><span>Review your recap and generated audio before publishing. Use only Chinese video and subtitle content you are authorized to process.</span></div>

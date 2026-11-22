@@ -54,7 +54,7 @@ function ProviderState({ provider, onChange, busy }) {
   </div>;
 }
 
-export default function AutoPublisher({ onBack }) {
+export default function AutoPublisher({ onBack, selectedProjectId = "" }) {
   const token = localStorage.getItem("toolaime-token") || "";
   const [projects, setProjects] = useState([]);
   const [jobs, setJobs] = useState([]);
@@ -68,6 +68,14 @@ export default function AutoPublisher({ onBack }) {
   const [notice, setNotice] = useState("");
   const completedProjects = useMemo(() => projects.filter((project) => project.renderJobs?.some((render) => render.status === "COMPLETED")), [projects]);
   const provider = form.platform === "YOUTUBE" ? config?.youtube : config?.facebook;
+
+  useEffect(() => {
+    if (!selectedProjectId || form.projectId) return;
+    const project = completedProjects.find((item) => item.id === selectedProjectId);
+    if (!project) return;
+    setForm((current) => ({ ...current, projectId: project.id, ...buildPublicationMetadata(project) }));
+    setNotice("Your generated recap is ready for publication. Review the metadata and confirm your rights.");
+  }, [selectedProjectId, completedProjects, form.projectId]);
 
   async function load() {
     setError("");
