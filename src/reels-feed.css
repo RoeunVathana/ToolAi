@@ -50,6 +50,9 @@
 
 .reels-scroller {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
@@ -61,6 +64,7 @@
   position: relative;
   display: flex;
   justify-content: center;
+  width: min(100%, 1180px);
   height: 100%;
   min-height: 100%;
   overflow: hidden;
@@ -70,9 +74,12 @@
 
 .reel-video {
   display: block;
-  width: min(100%, calc(100vh * .5625));
-  height: 100%;
-  object-fit: contain;
+  width: min(760px, calc(100% - 190px));
+  height: min(58vh, 430px);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, .42);
   background: #000;
   cursor: pointer;
 }
@@ -88,8 +95,8 @@
   position: absolute;
   z-index: 3;
   bottom: 98px;
-  left: clamp(18px, 5vw, 72px);
-  width: min(620px, calc(100% - 160px));
+  left: 34px;
+  width: min(520px, calc(100% - 180px));
   text-shadow: 0 2px 15px rgba(0, 0, 0, .65);
 }
 
@@ -106,7 +113,7 @@
 .reel-actions {
   position: absolute;
   z-index: 5;
-  right: clamp(14px, 4vw, 55px);
+  right: 22px;
   bottom: 100px;
   display: grid;
   justify-items: center;
@@ -143,11 +150,25 @@
 .reels-empty p { max-width: 460px; margin: 0 0 24px; color: rgba(255, 255, 255, .65); font-size: 14px; line-height: 1.7; }
 
 @media (min-width: 801px) {
+  .reel-slide {
+    min-height: 100%;
+  }
+
+  .reel-meta {
+    bottom: 112px;
+  }
+
+  .reel-actions {
+    bottom: 116px;
+  }
+
   .reels-bottom-nav { right: 50%; bottom: 22px; left: auto; width: min(520px, calc(100% - 48px)); transform: translateX(50%); border: 1px solid rgba(255, 255, 255, .14); border-radius: 18px; }
   .reels-topbar { padding: 22px 34px; }
 }
 
 @media (max-width: 600px) {
+  .reel-slide { width: 100%; }
+  .reel-video { width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; border-radius: 0; box-shadow: none; }
   .reels-topbar { padding: 16px 15px; }
   .reels-brand strong { font-size: 23px; }
   .reel-meta { right: 72px; bottom: 92px; left: 15px; width: auto; }
