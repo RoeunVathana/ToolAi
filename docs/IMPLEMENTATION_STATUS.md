@@ -8,7 +8,7 @@ The attached ChatGPT project script is the process reference for future work. Th
 
 - `DONE` — architecture, Prisma schema/migrations, authentication, dashboard, local storage, CRUD, tests, and working render vertical slice.
 - `DONE` — reproducible PostgreSQL Docker Compose setup in `docker-compose.yml`.
-- `IN_PROGRESS` — bounded migration toward `apps/web` and `apps/api`; the root app remains the deployable baseline until replacement behavior is verified.
+- `IN_PROGRESS` — the first typed `apps/web` + `apps/api` health boundary is verified; the root app remains the deployable baseline until replacement behavior is verified capability by capability.
 - `TODO` — refresh tokens, workspace/RBAC isolation, Redis/BullMQ, Python processing, and later AI/social phases.
 
 The detailed mapping is in [docs/CHATGPT_SCRIPT_ALIGNMENT.md](CHATGPT_SCRIPT_ALIGNMENT.md).
@@ -18,6 +18,7 @@ The detailed mapping is in [docs/CHATGPT_SCRIPT_ALIGNMENT.md](CHATGPT_SCRIPT_ALI
 | Area | Status | Implemented files | Verification | Known limitations |
 | --- | --- | --- | --- | --- |
 | Repository preservation | DONE | `src/main.jsx`, `server/index.js`, existing generation/publishing modules | Existing server routes preserved; production build passes | Phase 1 uses Vite/Express JS foundation instead of the planned Next/Nest split |
+| Typed architecture boundary | IN PROGRESS | `apps/web/app/page.tsx`, `apps/api/src/health/health.controller.ts`, `tests/architecture.test.js` | Next production build, Nest TypeScript build, and live Nest health smoke test pass; Express health endpoint manually verified | Only the health capability is migrated; auth, projects, media, and rendering remain on the root service |
 | Authentication | DONE | `server/phase1.js`, `src/main.jsx` | Register, login, `/me`, JWT checks, password hashing tested | Access-token-only session; refresh-token rotation is deferred |
 | PostgreSQL + Prisma | DONE | `prisma/schema.prisma`, `prisma/migrations/`, `prisma/seed.js` | `prisma validate`, migration, reset, seed verified locally; Railway PostgreSQL service provisioned and production migration/seed startup verified | Local PostgreSQL still needs a valid `DATABASE_URL` password |
 | Project manager | DONE | `server/phase1.js`, `src/main.jsx` | Create/list/open/update/delete routes are ownership-scoped | Delete confirmation UI is deferred |

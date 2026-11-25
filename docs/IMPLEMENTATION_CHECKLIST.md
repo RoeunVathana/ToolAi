@@ -12,11 +12,15 @@ This checklist follows the attached ChatGPT project script. A task is marked `DO
 - [x] Add a reproducible PostgreSQL Docker Compose service.
 - [x] Implement the local vertical slice: project → Khmer script → media → FFmpeg MP4 → preview/download.
 - [x] Verify the generated MP4 with FFprobe.
+- [x] Add a verified typed workspace slice under `apps/web` and `apps/api`.
+- [x] Expose and smoke-test the shared `/api/v1/health` contract in Express and NestJS.
 - [ ] Migrate bounded web behavior to Next.js App Router with TypeScript.
 - [ ] Migrate bounded API behavior to NestJS with TypeScript.
 - [ ] Add refresh-token rotation and workspace/RBAC isolation.
 
 **Gate:** Do not begin Phase 2 feature work until the migration work is either verified or explicitly accepted as a temporary compatibility decision.
+
+The typed health boundary is the first verified migration slice. The remaining migration work is still bounded and capability-by-capability; the root Vite/Express application remains the deployable baseline.
 
 ## Phase 2 — AI script and Khmer voice
 

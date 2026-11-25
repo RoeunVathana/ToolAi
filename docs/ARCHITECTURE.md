@@ -16,6 +16,16 @@ Render request -> controlled in-process job runner -> FFmpeg/FFprobe -> MP4
 
 The render job is deliberately a simple in-process runner for Phase 1. Redis/BullMQ is deferred until the core workflow is verified. Long-running jobs update `RenderJob` progress and are polled by the wizard.
 
+## Incremental typed boundary
+
+The repository now contains a verified first slice of the target split:
+
+- `apps/api` is a NestJS + TypeScript service exposing `GET /api/v1/health` on port `8788` by default.
+- `apps/web` is a Next.js App Router + TypeScript surface that reads that health contract and reports the typed API state.
+- The existing Express service exposes the same `/api/v1/health` contract and remains the production baseline on port `8787`.
+
+This is intentionally a real, tested boundary rather than an empty placeholder. Future capabilities can move behind the same contract after their behavior and ownership checks are covered.
+
 ## Ownership and storage
 
 - Every project query is scoped by `userId` from the verified JWT.

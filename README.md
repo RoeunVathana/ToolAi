@@ -55,6 +55,14 @@ Open [http://localhost:5173](http://localhost:5173). Vite serves the dashboard a
 
 Use the actual credentials for your local PostgreSQL service in `DATABASE_URL`; the example password is a placeholder. Never commit `.env` or provider keys.
 
+The first typed architecture slice can be checked independently:
+
+```powershell
+npm run check
+```
+
+This builds the existing Vite dashboard, builds the Next.js App Router surface in `apps/web`, compiles the NestJS API in `apps/api`, checks the existing server syntax, and runs the typed API health smoke test. The typed API defaults to `http://127.0.0.1:8788`; set `TOOLAIME_API_HEALTH_URL` for the Next page when pointing it at another health endpoint.
+
 ## Useful commands
 
 ```text
@@ -64,6 +72,7 @@ npm run db:generate    # generate Prisma Client
 npm run db:migrate     # create/apply a development migration
 npm run db:seed        # seed demo data
 npm run test:phase1    # API, upload, render, preview/download, and FFprobe test
+npm run check           # Root build plus typed web/API architecture checks
 ```
 
 ## Automatic Railway deployment

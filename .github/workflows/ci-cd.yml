@@ -20,12 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -37,8 +37,8 @@ jobs:
       - name: Check Phase 1 server syntax
         run: node --check server/phase1.js
 
-      - name: Build client
-        run: npm run build
+      - name: Run full application checks
+        run: npm run check
 
   deploy:
     name: Deploy to Railway
@@ -53,12 +53,12 @@ jobs:
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID || '76aba715-5c7e-4612-95ae-004fecc4b8c0' }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install Railway CLI
         run: npm install --global @railway/cli

@@ -65,6 +65,15 @@ app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 app.use("/generated", express.static(generatedDir));
 
+app.get("/api/v1/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    service: "api",
+    architecture: "express",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 registerPhase1Routes(app, {
   rootDir,
   ffmpegCommand,

@@ -3,9 +3,17 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "concurrently \"vite\" \"node server/index.js\"",
     "build": "vite build",
+    "build:web": "npm --workspace @toolaime/web run build",
+    "build:api": "npm --workspace @toolaime/api run build",
+    "test:architecture": "npm run build:api && node --test tests/architecture.test.js",
+    "check:syntax": "node --check server/phase1.js && node --check server/index.js",
+    "check": "npm run build && npm run build:web && npm run check:syntax && npm run test:architecture",
     "start": "npm run db:migrate:deploy && npm run db:seed && npm run start:app",
     "start:app": "node server/index.js",
     "preview": "vite preview",
