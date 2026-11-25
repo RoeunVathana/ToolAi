@@ -36,10 +36,16 @@ const mediaLabels = {
   en: {
     backgroundMusic: "Background music",
     backgroundMusicHint: "Optional MP3 or WAV · mixed quietly under narration",
+    generateAllWithAI: "Generate the full video with AI",
+    generateAllWithAIDescription: "Start from your project idea. AI will create the scenes, narration, and final MP4—no uploads required.",
+    uploadOwnMedia: "Use your own media instead",
   },
   km: {
     backgroundMusic: "សំឡេងភ្លេងផ្ទៃខាងក្រោយ",
     backgroundMusicHint: "ជាជម្រើស MP3 ឬ WAV · លាយស្រាលក្រោមសំឡេងអាន",
+    generateAllWithAI: "បង្កើតវីដេអូទាំងមូលជាមួយ AI",
+    generateAllWithAIDescription: "ចាប់ផ្តើមពីគំនិតគម្រោងរបស់អ្នក។ AI នឹងបង្កើតឈុត សំឡេងអាន និង MP4 ចុងក្រោយ ដោយមិនចាំបាច់បញ្ចូលឯកសារ។",
+    uploadOwnMedia: "ប្រើមេឌៀរបស់អ្នកជំនួស",
   },
 };
 
