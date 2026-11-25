@@ -639,6 +639,63 @@ async function ensureDemoPreviewVideo() {
   }
 }
 
+async function renderAiStoryboardScene({ scene, duration, index, total }) {
+  const filename = `ai-storyboard-scene-${Date.now()}-${index + 1}.mp4`;
+  const outputPath = path.join(generatedDir, filename);
+  const hue = (index * 78) % 360;
+  const frequency = 360 + (index * 55);
+  try {
+    await execFileAsync(ffmpegCommand, [
+      "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30",
+      "-f", "lavfi", "-i", `sine=frequency=${frequency}:sample_rate=48000`,
+      "-t", String(duration),
+      "-vf", `hue=h=${hue},eq=saturation=1.35:contrast=1.05:brightness=-0.04`,
+      "-c:v", "libx264", "-preset", "veryfast", "-threads", ffmpegThreads,
+      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
+      "-movflags", "+faststart", "-shortest", outputPath,
+    ]);
+  } catch (error) {
+    if (error.code === "ENOENT") throw new Error("FFmpeg is required to render the AI storyboard video.");
+    throw new Error(error.stderr || "FFmpeg could not render the AI storyboard video.");
+  }
+  return {
+    id: `scene-${Date.now()}-${index}`,
+    title: scene.title || `Scene ${index + 1} of ${total}`,
+    duration,
+    color: scenePresets[index % scenePresets.length].color,
+    status: "ready",
+    prompt: scene.prompt,
+    videoUrl: `/generated/${filename}`,
+    storyboard: true,
+  };
+}
+
+async function generateAiStoryboard({ prompt, sceneCount, duration, textProvider, suppliedStoryPlan }) {
+  const plan = createGenerationPlan(sceneCount, duration);
+  let storyPlan;
+  try {
+    storyPlan = suppliedStoryPlan?.sourcePrompt === prompt
+      ? normalizeStoryPlan(suppliedStoryPlan, plan, prompt)
+      : await planStoryWithProvider({ provider: textProvider, prompt, sceneCount, duration });
+  } catch {
+    storyPlan = planStoryWithTemplate({ prompt, sceneCount, duration });
+  }
+  const scenes = [];
+  for (let index = 0; index < storyPlan.scenes.length; index += 1) {
+    scenes.push(await renderAiStoryboardScene({ scene: storyPlan.scenes[index], duration: plan.durations[index], index, total: storyPlan.scenes.length }));
+  }
+  const previewVideoPath = await stitchScenes(scenes.map((scene) => scene.videoUrl), "youtube");
+  return {
+    mode: "ai-storyboard",
+    storyPlan,
+    warning: "Live Gemini video access or quota is unavailable, so ToolAiMe created an AI storyboard MP4 from the generated plan. No upload is required.",
+    scenes,
+    previewVideoUrl: `/generated/${path.basename(previewVideoPath)}`,
+    totalDuration: scenes.reduce((totalDuration, scene) => totalDuration + scene.duration, 0),
+    sceneCount: scenes.length,
+  };
+}
+
 function findVideoContent(interaction) {
   if (interaction.output_video) return interaction.output_video;
   return interaction.steps
@@ -1511,13 +1568,17 @@ function startGenerationJob(payload) {
       Object.assign(job, await generateGeminiScenes(payload), { status: "completed", updatedAt: Date.now() });
     } catch (error) {
       if (shouldUseDemoVideoFallback(error)) {
-        Object.assign(job, {
-          mode: "gemini",
-          status: "failed",
-          error: demoVideoWarning(error),
-          errorCode: "GEMINI_VIDEO_UNAVAILABLE",
-          updatedAt: Date.now(),
-        });
+        try {
+          Object.assign(job, await generateAiStoryboard(payload), { status: "completed", updatedAt: Date.now() });
+        } catch (fallbackError) {
+          Object.assign(job, {
+            mode: "gemini",
+            status: "failed",
+            error: `${demoVideoWarning(error)} ${fallbackError.message}`,
+            errorCode: "GEMINI_VIDEO_UNAVAILABLE",
+            updatedAt: Date.now(),
+          });
+        }
       } else {
         const normalized = normalizeProviderError(error, "Video generation failed.");
         Object.assign(job, { status: "failed", error: normalized.body.error, errorCode: normalized.body.code, retryAfterSeconds: normalized.body.retryAfterSeconds || null, updatedAt: Date.now() });
