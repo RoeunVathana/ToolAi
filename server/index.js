@@ -468,7 +468,7 @@ async function planStoryWithGemini({ prompt = defaultPrompt, sceneCount = 4, dur
   const model = process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const interaction = await withGeminiRetry(() => ai.interactions.create({
     model,
-    input: `You are the normal Gemini story producer for a safe family-friendly toy video channel. Turn this idea into a production-ready plan for exactly ${generationPlan.count} scenes totaling ${generationPlan.targetDuration} seconds. Keep all characters and toys original; never use brand names or copyrighted characters. Write vivid, practical prompts that describe visible action, camera movement, lighting, continuity, and natural original sound directions for a video model. Avoid scary, dangerous, sexual, political, or realistic child content.\n\nReturn only valid JSON (no markdown) with this shape: {"title":"string","description":"string","tags":["string"],"scenes":[{"title":"string","prompt":"string","audio":"string"}]}. The scenes array must contain exactly ${generationPlan.count} scenes.\n\nIDEA:\n${String(prompt).slice(0, 4000)}`,
+    input: `You are a family-friendly AI video director. Turn the user's idea into a production-ready plan for exactly ${generationPlan.count} scenes totaling ${generationPlan.targetDuration} seconds. Preserve the requested subjects, especially people and animals, and make every scene show clear visible action: movement, interaction, cause and effect, camera motion, and continuity. Do not replace people or animals with abstract graphics, test patterns, static slides, or toy scenes unless the user explicitly asks for toys. Never use brand names or copyrighted characters. Avoid scary, dangerous, sexual, political, or realistic child content. Write vivid, practical prompts for a video model and natural original sound directions.\n\nReturn only valid JSON (no markdown) with this shape: {"title":"string","description":"string","tags":["string"],"scenes":[{"title":"string","prompt":"string","audio":"string"}]}. The scenes array must contain exactly ${generationPlan.count} scenes.\n\nUSER IDEA:\n${String(prompt).slice(0, 4000)}`,
     store: false,
     response_format: {
       type: "text",
@@ -637,63 +637,6 @@ async function ensureDemoPreviewVideo() {
   } catch {
     return null;
   }
-}
-
-async function renderAiStoryboardScene({ scene, duration, index, total }) {
-  const filename = `ai-storyboard-scene-${Date.now()}-${index + 1}.mp4`;
-  const outputPath = path.join(generatedDir, filename);
-  const hue = (index * 78) % 360;
-  const frequency = 360 + (index * 55);
-  try {
-    await execFileAsync(ffmpegCommand, [
-      "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30",
-      "-f", "lavfi", "-i", `sine=frequency=${frequency}:sample_rate=48000`,
-      "-t", String(duration),
-      "-vf", `hue=h=${hue},eq=saturation=1.35:contrast=1.05:brightness=-0.04`,
-      "-c:v", "libx264", "-preset", "veryfast", "-threads", ffmpegThreads,
-      "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-ac", "2",
-      "-movflags", "+faststart", "-shortest", outputPath,
-    ]);
-  } catch (error) {
-    if (error.code === "ENOENT") throw new Error("FFmpeg is required to render the AI storyboard video.");
-    throw new Error(error.stderr || "FFmpeg could not render the AI storyboard video.");
-  }
-  return {
-    id: `scene-${Date.now()}-${index}`,
-    title: scene.title || `Scene ${index + 1} of ${total}`,
-    duration,
-    color: scenePresets[index % scenePresets.length].color,
-    status: "ready",
-    prompt: scene.prompt,
-    videoUrl: `/generated/${filename}`,
-    storyboard: true,
-  };
-}
-
-async function generateAiStoryboard({ prompt, sceneCount, duration, textProvider, suppliedStoryPlan }) {
-  const plan = createGenerationPlan(sceneCount, duration);
-  let storyPlan;
-  try {
-    storyPlan = suppliedStoryPlan?.sourcePrompt === prompt
-      ? normalizeStoryPlan(suppliedStoryPlan, plan, prompt)
-      : await planStoryWithProvider({ provider: textProvider, prompt, sceneCount, duration });
-  } catch {
-    storyPlan = planStoryWithTemplate({ prompt, sceneCount, duration });
-  }
-  const scenes = [];
-  for (let index = 0; index < storyPlan.scenes.length; index += 1) {
-    scenes.push(await renderAiStoryboardScene({ scene: storyPlan.scenes[index], duration: plan.durations[index], index, total: storyPlan.scenes.length }));
-  }
-  const previewVideoPath = await stitchScenes(scenes.map((scene) => scene.videoUrl), "youtube");
-  return {
-    mode: "ai-storyboard",
-    storyPlan,
-    warning: "Live Gemini video access or quota is unavailable, so ToolAiMe created an AI storyboard MP4 from the generated plan. No upload is required.",
-    scenes,
-    previewVideoUrl: `/generated/${path.basename(previewVideoPath)}`,
-    totalDuration: scenes.reduce((totalDuration, scene) => totalDuration + scene.duration, 0),
-    sceneCount: scenes.length,
-  };
 }
 
 function findVideoContent(interaction) {
@@ -1507,12 +1450,12 @@ function shouldUseDemoVideoFallback(error) {
 function demoVideoWarning(error) {
   const message = String(error?.message || error || "");
   if (/quota|rate limit|free tier|billing|limit/i.test(message)) {
-    return "Live Gemini video access or quota is unavailable. No video was created. Add paid video access or use an uploaded MP4 instead.";
+    return "Real moving AI video is unavailable because this Gemini project has no video quota. No placeholder video was created. Enable paid Gemini Omni video access and try again.";
   }
   if (/model|not found|not available|unsupported/i.test(message)) {
-    return "The configured Gemini video model is unavailable. No video was created. Check the model and retry live generation.";
+    return "The configured Gemini video model is unavailable. No placeholder video was created. Check Gemini Omni video access and retry live generation.";
   }
-  return "Gemini could not finish the live video request. No video was created; retry live generation later.";
+  return "Gemini could not finish the live video request. No placeholder video was created; retry live generation later.";
 }
 
 function serializeGenerationJob(job) {
@@ -1568,17 +1511,13 @@ function startGenerationJob(payload) {
       Object.assign(job, await generateGeminiScenes(payload), { status: "completed", updatedAt: Date.now() });
     } catch (error) {
       if (shouldUseDemoVideoFallback(error)) {
-        try {
-          Object.assign(job, await generateAiStoryboard(payload), { status: "completed", updatedAt: Date.now() });
-        } catch (fallbackError) {
-          Object.assign(job, {
-            mode: "gemini",
-            status: "failed",
-            error: `${demoVideoWarning(error)} ${fallbackError.message}`,
-            errorCode: "GEMINI_VIDEO_UNAVAILABLE",
-            updatedAt: Date.now(),
-          });
-        }
+        Object.assign(job, {
+          mode: "gemini",
+          status: "failed",
+          error: demoVideoWarning(error),
+          errorCode: "GEMINI_VIDEO_UNAVAILABLE",
+          updatedAt: Date.now(),
+        });
       } else {
         const normalized = normalizeProviderError(error, "Video generation failed.");
         Object.assign(job, { status: "failed", error: normalized.body.error, errorCode: normalized.body.code, retryAfterSeconds: normalized.body.retryAfterSeconds || null, updatedAt: Date.now() });
