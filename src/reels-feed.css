@@ -1,0 +1,157 @@
+.reels-shell {
+  height: 100vh;
+  overflow: hidden;
+  background: #000;
+}
+
+.reels-shell .sidebar { display: none; }
+.reels-shell .sidebar.open { display: flex; position: fixed; z-index: 60; inset: 0 auto 0 0; }
+.reels-shell .main-area { width: 100%; min-height: 100vh; }
+.reels-shell .topbar { display: none; }
+.reels-shell .page-content { width: 100%; max-width: none; height: 100vh; margin: 0; padding: 0; }
+
+.reels-feed {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  color: #fff;
+  background: #000;
+}
+
+.reels-topbar {
+  position: absolute;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .72), transparent);
+}
+
+.reels-brand,
+.reels-top-actions button,
+.reel-actions button,
+.reels-bottom-nav button {
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.reels-brand { display: grid; gap: 2px; padding: 0; text-align: left; }
+.reels-brand span { font-size: 11px; font-weight: 700; letter-spacing: .13em; opacity: .7; text-transform: uppercase; }
+.reels-brand strong { font-size: 25px; line-height: 1; letter-spacing: -.05em; }
+.reels-top-actions { display: flex; align-items: center; gap: 18px; }
+.reels-top-actions button { display: grid; place-items: center; padding: 5px; }
+.reels-top-actions button:hover { opacity: .7; }
+
+.reels-scroller {
+  height: 100%;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+
+.reels-scroller::-webkit-scrollbar { display: none; }
+
+.reel-slide {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  scroll-snap-align: start;
+  background: #050505;
+}
+
+.reel-video {
+  display: block;
+  width: min(100%, calc(100vh * .5625));
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  cursor: pointer;
+}
+
+.reel-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(0, 0, 0, .12), transparent 28%, transparent 52%, rgba(0, 0, 0, .86) 100%);
+}
+
+.reel-meta {
+  position: absolute;
+  z-index: 3;
+  bottom: 98px;
+  left: clamp(18px, 5vw, 72px);
+  width: min(620px, calc(100% - 160px));
+  text-shadow: 0 2px 15px rgba(0, 0, 0, .65);
+}
+
+.reel-author { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; font-size: 13px; }
+.reel-author span { color: rgba(255, 255, 255, .72); }
+.reel-avatar { display: grid; place-items: center; width: 30px; height: 30px; border: 2px solid rgba(255, 255, 255, .9); border-radius: 50%; color: #111; background: #dff38a; font-size: 12px; font-weight: 800; text-shadow: none; }
+.reel-meta h2 { margin: 0 0 5px; font-size: clamp(18px, 2.2vw, 26px); letter-spacing: -.04em; }
+.reel-meta p { max-width: 600px; margin: 0; color: rgba(255, 255, 255, .86); font-size: 13px; line-height: 1.45; }
+.reel-project-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 13px; padding: 0; border: 0; color: #fff; background: transparent; font-size: 12px; font-weight: 800; cursor: pointer; }
+.reel-project-link:hover { color: #dff38a; }
+.reel-audio { display: flex; align-items: center; gap: 6px; max-width: 260px; margin-top: 15px; color: rgba(255, 255, 255, .8); font-size: 11px; }
+.reel-audio span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.reel-actions {
+  position: absolute;
+  z-index: 5;
+  right: clamp(14px, 4vw, 55px);
+  bottom: 100px;
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+}
+
+.reel-actions button { display: grid; justify-items: center; gap: 5px; min-width: 40px; padding: 0; text-shadow: 0 2px 10px rgba(0, 0, 0, .6); }
+.reel-actions button:hover, .reel-actions button.active { color: #dff38a; }
+.reel-actions span { max-width: 62px; overflow: hidden; color: rgba(255, 255, 255, .9); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.reel-actions .reel-volume { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid rgba(255, 255, 255, .28); border-radius: 50%; background: rgba(0, 0, 0, .34); }
+
+.reels-bottom-nav {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  padding: 9px max(14px, env(safe-area-inset-right)) max(10px) max(14px, env(safe-area-inset-left));
+  border-top: 1px solid rgba(255, 255, 255, .12);
+  background: rgba(8, 8, 8, .82);
+  backdrop-filter: blur(18px);
+}
+
+.reels-bottom-nav button { display: grid; justify-items: center; gap: 3px; padding: 2px 4px; color: rgba(255, 255, 255, .68); font-size: 10px; }
+.reels-bottom-nav button.active, .reels-bottom-nav button:hover { color: #fff; }
+.reels-bottom-nav button.active svg { color: #dff38a; }
+
+.reels-empty { display: grid; justify-items: center; align-content: center; height: 100%; padding: 100px 32px; text-align: center; background: radial-gradient(circle at 50% 30%, #182434, #000 58%); }
+.reels-empty-mark { display: grid; place-items: center; width: 76px; height: 76px; margin-bottom: 20px; border: 1px solid rgba(223, 243, 138, .4); border-radius: 24px; color: #07121b; background: #dff38a; box-shadow: 0 0 60px rgba(223, 243, 138, .18); }
+.reels-kicker { color: #dff38a; font-size: 11px; font-weight: 800; letter-spacing: .18em; }
+.reels-empty h1 { max-width: 520px; margin: 14px 0 8px; color: #fff; font-size: clamp(28px, 5vw, 52px); letter-spacing: -.06em; }
+.reels-empty p { max-width: 460px; margin: 0 0 24px; color: rgba(255, 255, 255, .65); font-size: 14px; line-height: 1.7; }
+
+@media (min-width: 801px) {
+  .reels-bottom-nav { right: 50%; bottom: 22px; left: auto; width: min(520px, calc(100% - 48px)); transform: translateX(50%); border: 1px solid rgba(255, 255, 255, .14); border-radius: 18px; }
+  .reels-topbar { padding: 22px 34px; }
+}
+
+@media (max-width: 600px) {
+  .reels-topbar { padding: 16px 15px; }
+  .reels-brand strong { font-size: 23px; }
+  .reel-meta { right: 72px; bottom: 92px; left: 15px; width: auto; }
+  .reel-actions { right: 11px; bottom: 96px; gap: 16px; }
+  .reel-meta p { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .reels-empty { padding-right: 24px; padding-left: 24px; }
+}
