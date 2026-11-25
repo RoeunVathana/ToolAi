@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronDown, CircleHelp, CirclePlay, Clapperboard, CloudUpload, Download, FileAudio, Film, FolderOpen, Gauge, Heart, History, Home, ImagePlus, Languages, LayoutDashboard, Library, LogOut, Menu, MessageCircle, Mic2, Moon, MoreHorizontal, Music2, Pause, Pencil, Play, Plus, RefreshCw, RotateCcw, Search, Settings, Share2, ShieldCheck, Sparkles, Sun, Trash2, Upload, UserRound, Volume2, VolumeX, WandSparkles, X } from "lucide-react";
 import "./styles.css";
 import "./ui-refresh.css";
-import "./reels-feed.css";
 import AutoPublisher from "./AutoPublisher.jsx";
 import ChineseStoryRecap from "./ChineseStoryRecap.jsx";
 import { LanguageContext, useLanguage, text } from "./language.jsx";
@@ -69,7 +68,7 @@ function Workspace({ session, onSignOut, theme, onTheme }) {
 
 function WorkspaceShell({ session, onSignOut, theme, onTheme }) {
   const { language, toggleLanguage } = useLanguage();
-  const [view, setView] = useState("reels");
+  const [view, setView] = useState("generator");
   const [mobileNav, setMobileNav] = useState(false);
   const [projects, setProjects] = useState([]);
   const [notice, setNotice] = useState(null);
@@ -79,7 +78,7 @@ function WorkspaceShell({ session, onSignOut, theme, onTheme }) {
   const [deleteBusy, setDeleteBusy] = useState(false);
   async function loadProjects() { try { const data = await api("/api/v1/projects", {}, session.token); setProjects(data.projects || []); } catch (error) { setNotice({ type: "error", text: error.message }); } }
   useEffect(() => { loadProjects(); }, []);
-  function navigate(nextView) { setView(nextView); setMobileNav(false); setNotice(null); }
+  function navigate(nextView) { setView(nextView === "reels" ? "generator" : nextView); setMobileNav(false); setNotice(null); }
   function openProject(project) { setActiveProject(project); setView("generator"); setMobileNav(false); }
   async function openPublisher(projectId = "") { setPublisherProjectId(projectId); await loadProjects(); navigate("publisher"); }
   function deleteProject(project) { setConfirmProject(project); }
