@@ -41,6 +41,17 @@ function isTransientGeminiError(error) {
     || /high demand|temporar|overload|unavailable|resource exhausted|try again later/i.test(message);
 }
 
+function providerErrorMessage(error, fallbackMessage) {
+  const rawMessage = String(error?.message || "").trim();
+  if (!rawMessage) return fallbackMessage;
+  try {
+    const parsed = JSON.parse(rawMessage);
+    return parsed?.error?.message || parsed?.message || fallbackMessage;
+  } catch {
+    return rawMessage;
+  }
+}
+
 async function withGeminiRetry(operation, attempts = 3) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -141,7 +152,7 @@ async function generateKhmerScript({ topic, durationMinutes, language }) {
     "Use clear spoken Khmer, a strong opening, short paragraphs, and only events supported by the topic.",
     "Return only the narration script in Khmer. Do not include headings, markdown, or production notes.",
   ].join("\n");
-  const response = await ai.models.generateContent({ model, contents: prompt });
+  const response = await withGeminiRetry(() => ai.models.generateContent({ model, contents: prompt }));
   const script = pickScriptText(response);
   if (!script) throw new Error("Gemini returned an empty script.");
   return { script, provider: "gemini", model };
@@ -581,8 +592,14 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       const updated = await prisma.videoProject.update({ where: { id: project.id }, data: { topic: body.topic, language: body.language, durationMinutes: body.durationMinutes, script: result.script, status: "SCRIPT_READY" } });
       return res.json({ script: result.script, provider: result.provider, model: result.model, status: "completed", project: formatProject(updated) });
     } catch (error) {
-      const status = error?.status || (error?.name === "ZodError" ? 400 : 502);
-      return res.status(status).json({ error: error?.name === "ZodError" ? error.issues[0]?.message : error.message || "Gemini script generation failed.", code: error?.code || "GEMINI_ERROR" });
+      const transient = isTransientGeminiError(error);
+      const status = error?.name === "ZodError" ? 400 : transient ? 503 : (error?.status || 502);
+      const message = error?.name === "ZodError"
+        ? error.issues[0]?.message
+        : transient
+          ? "Gemini is temporarily busy. Please try generating the script again in a moment."
+          : providerErrorMessage(error, "Gemini script generation failed.");
+      return res.status(status).json({ error: message, code: transient ? "GEMINI_TEMPORARILY_BUSY" : error?.code || "GEMINI_ERROR" });
     }
   });
 
