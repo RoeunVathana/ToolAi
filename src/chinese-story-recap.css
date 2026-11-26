@@ -61,6 +61,15 @@
 .recap-video-empty strong { color: #d9d8f5; font-size: 14px; }
 .recap-video-empty span { font-size: 11px; }
 .recap-video-preview { display: block; width: 100%; max-height: 360px; border-radius: 11px; background: #050812; }
+.recap-preview-gate { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 11px; padding: 12px 14px; border: 1px solid rgba(255, 177, 102, .3); border-radius: 10px; background: rgba(48, 31, 19, .42); }
+.recap-preview-gate-copy { display: grid; gap: 4px; min-width: 0; }
+.recap-preview-gate-copy strong { color: #ffd5a8; font-size: 12px; }
+.recap-preview-gate-copy span { color: #b7a895; font-size: 10px; line-height: 1.5; }
+.recap-preview-status { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; color: #ffc77d; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.recap-preview-status svg { display: none; }
+.recap-preview-gate.is-ready { border-color: rgba(114, 232, 176, .35); background: rgba(18, 54, 43, .42); }
+.recap-preview-gate.is-ready .recap-preview-gate-copy strong, .recap-preview-gate.is-ready .recap-preview-status { color: #8df0bd; }
+.recap-preview-gate.is-ready .recap-preview-status svg { display: block; }
 .recap-video-hint { display: flex; align-items: center; gap: 7px; margin-top: 10px; color: #aab1d8; font-size: 11px; line-height: 1.5; }
 .recap-source-editor, .recap-script-editor { width: 100%; min-height: 155px; resize: vertical; font-size: 12px; line-height: 1.7; }
 .recap-source-editor { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
@@ -73,6 +82,7 @@
 .recap-purple-button, .recap-export-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 15px; border: 1px solid rgba(201, 139, 255, .5); border-radius: 8px; color: #fff; background: linear-gradient(135deg, #833bf2, #5124bd); box-shadow: 0 6px 16px rgba(88, 34, 194, .24); font-size: 11px; font-weight: 800; text-decoration: none; }
 .recap-purple-button:hover:not(:disabled), .recap-export-button:hover { transform: translateY(-1px); background: linear-gradient(135deg, #9855ff, #6032d1); }
 .recap-purple-button:disabled { cursor: not-allowed; opacity: .45; }
+.recap-export-button:disabled { cursor: not-allowed; opacity: .45; filter: grayscale(.35); }
 .recap-action-bar { justify-content: flex-end; flex-wrap: wrap; border-top: 1px solid rgba(125, 126, 199, .22); }
 .recap-action-bar > span { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; color: #7f87ae; font-size: 10px; }
 .recap-ready-dot { width: 7px; height: 7px; border-radius: 50%; background: #72e8b0; box-shadow: 0 0 9px rgba(114, 232, 176, .8); }
