@@ -332,6 +332,18 @@ async function burnTimelineSubtitles({ inputPath, subtitlePath, outputPath, ffmp
   ], { maxBuffer: 1024 * 1024 * 4 });
 }
 
+async function renderSynchronizedTimeline({ sourcePath, audioPath, outputPath, durationSeconds, ffmpegCommand }) {
+  const targetDuration = Number(durationSeconds).toFixed(3);
+  await execFileAsync(ffmpegCommand, [
+    "-y", "-i", sourcePath, "-i", audioPath,
+    "-filter_complex", `[1:a]aresample=48000,apad,atrim=duration=${targetDuration},asetpts=N/SR/TB[aout]`,
+    "-map", "0:v:0", "-map", "[aout]",
+    "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+    "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
+    "-t", targetDuration, "-movflags", "+faststart", outputPath,
+  ], { maxBuffer: 1024 * 1024 * 4 });
+}
+
 function narrationResponse(narration, storageRoot, includeScript = false) {
   return {
     ...narration,
@@ -836,13 +848,14 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
         await fs.writeFile(audioPath, generated.audio);
       }
       const mixedPath = ensureContained(storageRoot, path.join(timelineDir, "mixed.mp4"));
-      await execFileAsync(ffmpegCommand, ["-y", "-i", sourcePath, "-i", audioPath, "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", mixedPath], { maxBuffer: 1024 * 1024 * 4 });
+      await renderSynchronizedTimeline({ sourcePath, audioPath, outputPath: mixedPath, durationSeconds, ffmpegCommand });
       const outputPath = ensureContained(storageRoot, path.join(timelineDir, "timeline.mp4"));
       if (subtitlePath) {
         try { await burnTimelineSubtitles({ inputPath: mixedPath, subtitlePath, outputPath, ffmpegCommand }); }
         catch { await fs.copyFile(mixedPath, outputPath); }
       } else await fs.copyFile(mixedPath, outputPath);
-      const timeline = await prisma.voiceTimeline.create({ data: { id, userId: req.userId, projectId: body.projectId || null, title: body.title, voice: body.voice, sourcePath, audioPath, subtitlePath, outputPath, subtitleText: subtitleText || script, status: "COMPLETED", durationSeconds } });
+      const renderedDurationSeconds = await probeDuration(ffprobeCommand, outputPath);
+      const timeline = await prisma.voiceTimeline.create({ data: { id, userId: req.userId, projectId: body.projectId || null, title: body.title, voice: body.voice, sourcePath, audioPath, subtitlePath, outputPath, subtitleText: subtitleText || script, status: "COMPLETED", durationSeconds: renderedDurationSeconds } });
       let asset = null;
       if (body.projectId) {
         const last = await prisma.mediaAsset.findFirst({ where: { projectId: body.projectId, type: "VIDEO" }, orderBy: { displayOrder: "desc" } });
