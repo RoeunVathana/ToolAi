@@ -24,6 +24,7 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
   const [projects, setProjects] = useState([]);
   const [title, setTitle] = useState("Chinese story recap");
   const [targetLanguage, setTargetLanguage] = useState("km");
+  const [voiceProvider, setVoiceProvider] = useState("gemini");
   const [voice, setVoice] = useState("Kore");
   const [projectId, setProjectId] = useState("");
   const [sourceText, setSourceText] = useState("");
@@ -49,6 +50,14 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
       if (projectResult.status === "fulfilled") setProjects(projectResult.value.projects || []);
     });
   }, []);
+
+  useEffect(() => {
+    if (!catalog) return;
+    const provider = catalog.provider || "gemini";
+    const voices = catalog.voicesByProvider?.[provider] || catalog.voices || [];
+    setVoiceProvider(provider);
+    setVoice(voices[0]?.id || (provider === "kiritts" ? "Maly" : "Kore"));
+  }, [catalog]);
 
   useEffect(() => {
     if (!videoFile) {
@@ -119,7 +128,7 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
         setProjects((current) => [created.project, ...current]);
       }
       const form = new FormData();
-      form.append("video", videoFile); form.append("title", title); form.append("voice", voice); form.append("script", recap);
+      form.append("video", videoFile); form.append("title", title); form.append("provider", voiceProvider); form.append("voice", voice); form.append("script", recap);
       form.append("projectId", targetProjectId);
       const data = await request("/api/v1/voice/timelines", { method: "POST", body: form }, token);
       setTimeline(data.timeline);
@@ -132,7 +141,7 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
   }
 
   function mediaUrl(url) { return url ? `${url}?token=${encodeURIComponent(token)}` : ""; }
-  const voices = catalog?.voices || [{ id: "Kore", label: "Kore", description: "Clear and balanced" }];
+  const voices = catalog?.voicesByProvider?.[voiceProvider] || catalog?.voices || [{ id: "Kore", label: "Kore", description: "Clear and balanced" }];
   const segmentCount = sourceText.split(/\n\s*\n/).map((item) => item.trim()).filter(Boolean).length;
   const durationLabel = timeline?.durationSeconds ? `${Math.round(timeline.durationSeconds)}s` : "00:00";
   const previewLabels = language === "km"
@@ -148,7 +157,7 @@ export default function ChineseStoryRecap({ onBack, theme = "dark", onTheme, onO
       <aside className="recap-reference-sidebar">
         <section className="recap-mini-card recap-audio-card"><div className="recap-section-title"><span><Mic2 size={15} /> {text(language, "generatedAudio")}</span><span>{timeline ? text(language, "ready") : "00:00 / 00:00"}</span></div>{timeline?.audioUrl ? <audio controls preload="metadata" src={mediaUrl(timeline.audioUrl)} /> : <div className="recap-audio-placeholder"><Mic2 size={18} /><span>{language === "km" ? "សំឡេងអានដែលបានបង្កើតនឹងបង្ហាញនៅទីនេះ។" : "Your generated narration will appear here."}</span></div>}</section>
         <section className="recap-mini-card recap-summary-card"><div className="recap-section-title"><span><FileText size={15} /> {text(language, "timelineSummary")}</span><span className="recap-live-dot">● {text(language, "ready")}</span></div><div className="recap-stats"><div><strong>{segmentCount}</strong><span>{text(language, "recapSegments")}</span></div><div><strong>{durationLabel}</strong><span>{text(language, "duration")}</span></div><div><strong>{voice}</strong><span>{text(language, "recapVoice")}</span></div></div><label className="field"><span>{text(language, "recapTitleLabel")}</span><input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} /></label><label className="field"><span>{text(language, "attachProject")}</span><select value={projectId} onChange={(event) => setProjectId(event.target.value)}><option value="">{text(language, "keepRecapHistory")}</option>{projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></label></section>
-        <section className="recap-mini-card recap-voice-card"><span className="recap-kicker">{text(language, "selectedVoice")}</span><div className="recap-voice-orb"><Mic2 size={30} /></div><h2>{voices.find((item) => item.id === voice)?.label || voice}</h2><p>{text(language, "khmerNarrationVoice")}</p><label className="field"><span>{text(language, "changeVoice")}</span><select value={voice} onChange={(event) => setVoice(event.target.value)}>{voices.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.description}</option>)}</select></label><div className="recap-voice-status"><span>● {text(language, "ready")}</span><small>{catalog?.configured ? "Gemini TTS" : text(language, "providerSetup")}</small></div></section>
+        <section className="recap-mini-card recap-voice-card"><span className="recap-kicker">{text(language, "selectedVoice")}</span><div className="recap-voice-orb"><Mic2 size={30} /></div><h2>{voices.find((item) => item.id === voice)?.label || voice}</h2><p>{text(language, "khmerNarrationVoice")}</p><label className="field"><span>{language === "km" ? "អ្នកផ្តល់សេវាសំឡេង" : "Voice provider"}</span><select value={voiceProvider} onChange={(event) => { const provider = event.target.value; const nextVoices = catalog?.voicesByProvider?.[provider] || []; setVoiceProvider(provider); setVoice(nextVoices[0]?.id || (provider === "kiritts" ? "Maly" : "Kore")); }}>{(catalog?.providers || []).map((provider) => <option key={provider.id} value={provider.id} disabled={!provider.configured}>{provider.label}{provider.configured ? "" : " · not configured"}</option>)}</select></label><label className="field"><span>{text(language, "changeVoice")}</span><select value={voice} onChange={(event) => setVoice(event.target.value)}>{voices.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.description}</option>)}</select></label><div className="recap-voice-status"><span>● {text(language, "ready")}</span><small>{catalog?.configured ? (voiceProvider === "kiritts" ? "Kiri TTS" : "Gemini TTS") : text(language, "providerSetup")}</small></div></section>
       </aside>
       <main className="recap-reference-main">
         <section className="recap-panel recap-video-panel">

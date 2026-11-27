@@ -29,6 +29,11 @@ const supportedTtsVoices = [
   { id: "Zephyr", label: "Zephyr", description: "Gentle and natural" },
   { id: "Rasalgethi", label: "Rasalgethi", description: "Narration-focused" },
 ];
+const supportedKiriTtsVoices = [
+  { id: "Maly", label: "Maly · Kiri TTS", description: "Natural Khmer voice" },
+];
+const kiriApiBaseUrl = String(process.env.KIRI_API_BASE_URL || "https://api.kiritts.com/v1").replace(/\/$/, "");
+const kiriRequestTimeout = Number(process.env.KIRI_REQUEST_TIMEOUT_MS || 60000);
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -222,13 +227,27 @@ async function generateReplicatedVoiceover({ script, sourceAudioPath, consentAud
   }
 }
 
+function hasKiriConfig() {
+  return Boolean(String(process.env.KIRI_API_KEY || "").trim());
+}
+
 function voiceCatalog() {
+  const voicesByProvider = {
+    gemini: supportedTtsVoices,
+    kiritts: supportedKiriTtsVoices,
+  };
+  const defaultProvider = hasKiriConfig() ? "kiritts" : "gemini";
   return {
-    provider: "gemini",
+    provider: defaultProvider,
     model: process.env.GEMINI_TTS_MODEL || "gemini-3.8-flash-tts",
-    configured: Boolean(process.env.GEMINI_API_KEY),
+    configured: Boolean(process.env.GEMINI_API_KEY) || hasKiriConfig(),
     language: "km",
-    voices: supportedTtsVoices,
+    providers: [
+      { id: "gemini", label: "Gemini TTS", configured: Boolean(process.env.GEMINI_API_KEY), description: "Provider-backed Khmer narration" },
+      { id: "kiritts", label: "Kiri TTS", configured: hasKiriConfig(), description: "Khmer-first speech from Kiri" },
+    ],
+    voicesByProvider,
+    voices: voicesByProvider[defaultProvider],
   };
 }
 
@@ -271,13 +290,84 @@ function voiceRequestSchema(body, options = {}) {
   return z.object({
     script: z.string().trim().min(1, "Write a Khmer script before generating audio.").max(30000),
     title: z.string().trim().min(1).max(120).default("Khmer narration"),
-    voice: z.string().trim().min(1).default("Kore").refine((value) => supportedTtsVoices.some((item) => item.id === value), "Choose a supported Gemini voice."),
+    provider: z.enum(["gemini", "kiritts"]).default(hasKiriConfig() ? "kiritts" : "gemini"),
+    voice: z.string().trim().min(1).default(hasKiriConfig() ? "Maly" : "Kore"),
     speed: z.coerce.number().min(0.75, "Speed must be at least 0.75x.").max(1.5, "Speed cannot exceed 1.5x.").default(1),
     projectId,
   }).parse(body || {});
 }
 
-async function generateStandardVoiceover({ script, voice, speed, ffmpegCommand, tempDir }) {
+function splitKiriText(text, limit = 3800) {
+  const normalized = String(text || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  if (normalized.length <= limit) return normalized ? [normalized] : [];
+  const chunks = [];
+  let remaining = normalized;
+  while (remaining.length > limit) {
+    const window = remaining.slice(0, limit);
+    const breakAt = Math.max(
+      window.lastIndexOf("\n\n"),
+      window.lastIndexOf("។"),
+      window.lastIndexOf("។ "),
+      window.lastIndexOf("! "),
+      window.lastIndexOf("? "),
+      window.lastIndexOf(". "),
+    );
+    const cut = breakAt > Math.floor(limit * 0.55) ? breakAt + 1 : limit;
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
+async function generateKiriVoiceover({ script, voice, speed, ffmpegCommand, tempDir }) {
+  if (!hasKiriConfig()) {
+    const error = new Error("Kiri TTS is not configured. Add KIRI_API_KEY on the server or choose Gemini TTS.");
+    error.code = "KIRI_NOT_CONFIGURED";
+    error.status = 503;
+    throw error;
+  }
+  const chunkPaths = [];
+  const cleanupPaths = [];
+  const listPath = path.join(tempDir, `${crypto.randomUUID()}-kiri-list.txt`);
+  const mergedPath = path.join(tempDir, `${crypto.randomUUID()}-kiri-merged.wav`);
+  const finalPath = path.join(tempDir, `${crypto.randomUUID()}-kiri-final.wav`);
+  cleanupPaths.push(listPath, mergedPath, finalPath);
+  try {
+    for (const [index, chunk] of splitKiriText(script).entries()) {
+      const response = await fetch(`${kiriApiBaseUrl}/audio/speech`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.KIRI_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: process.env.KIRI_TTS_MODEL || "kiritts", input: chunk, voice, response_format: "wav" }),
+        signal: AbortSignal.timeout(kiriRequestTimeout),
+      });
+      if (!response.ok) {
+        const raw = await response.text();
+        let detail = raw;
+        try { detail = JSON.parse(raw)?.detail || JSON.parse(raw)?.error?.message || raw; } catch { /* keep raw response */ }
+        const error = new Error(`Kiri TTS request failed (${response.status}): ${detail || "unknown provider error"}`);
+        error.code = response.status === 429 ? "KIRI_RATE_LIMITED" : "KIRI_REQUEST_FAILED";
+        error.status = response.status >= 500 ? 502 : response.status;
+        throw error;
+      }
+      const chunkPath = path.join(tempDir, `${crypto.randomUUID()}-kiri-${index}.wav`);
+      await fs.writeFile(chunkPath, Buffer.from(await response.arrayBuffer()));
+      chunkPaths.push(chunkPath);
+      cleanupPaths.push(chunkPath);
+    }
+    if (!chunkPaths.length) throw new Error("Kiri TTS returned no speech audio.");
+    await fs.writeFile(listPath, chunkPaths.map((filePath) => `file '${filePath.replace(/'/g, "'\\''")}'`).join("\n"), "utf8");
+    await execFileAsync(ffmpegCommand, ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c:a", "pcm_s16le", "-ar", "24000", "-ac", "1", mergedPath], { maxBuffer: 1024 * 1024 * 4 });
+    if (Number(speed) === 1) await fs.copyFile(mergedPath, finalPath);
+    else await execFileAsync(ffmpegCommand, ["-y", "-i", mergedPath, "-filter:a", `atempo=${Number(speed)}`, "-ar", "24000", "-ac", "1", finalPath], { maxBuffer: 1024 * 1024 * 4 });
+    return { audio: await fs.readFile(finalPath), model: process.env.KIRI_TTS_MODEL || "kiritts", provider: "kiritts", speed };
+  } finally {
+    await Promise.all(cleanupPaths.map((filePath) => fs.rm(filePath, { force: true }).catch(() => {})));
+  }
+}
+
+async function generateStandardVoiceover({ script, voice, speed, provider = "gemini", ffmpegCommand, tempDir }) {
+  if (provider === "kiritts") return generateKiriVoiceover({ script, voice, speed, ffmpegCommand, tempDir });
   if (!process.env.GEMINI_API_KEY) {
     const error = new Error("Gemini TTS is not configured. You can upload a recorded narration instead.");
     error.code = "GEMINI_NOT_CONFIGURED";
@@ -731,7 +821,7 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
     try {
       const input = voiceRequestSchema(req.body);
       if (input.projectId && !(await ownedProject(input.projectId, req.userId))) return res.status(404).json({ error: "Project not found." });
-      const generated = await generateStandardVoiceover({ script: input.script, voice: input.voice, speed: input.speed, ffmpegCommand, tempDir: incomingRoot });
+      const generated = await generateStandardVoiceover({ script: input.script, voice: input.voice, speed: input.speed, provider: input.provider, ffmpegCommand, tempDir: incomingRoot });
       const durationSeconds = await (async () => {
         const temporaryPath = path.join(incomingRoot, `${crypto.randomUUID()}-duration.wav`);
         try { await fs.writeFile(temporaryPath, generated.audio); return await probeDuration(ffprobeCommand, temporaryPath); }
@@ -754,11 +844,12 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       const input = voiceRequestSchema({
         script: paragraphs[paragraphIndex],
         title: `${parent.title} · paragraph ${paragraphIndex + 1}`,
+        provider: req.body?.provider || parent.provider || (parent.voice === "Maly" ? "kiritts" : "gemini"),
         voice: req.body?.voice || parent.voice,
         speed: req.body?.speed ?? parent.speed,
         projectId: parent.projectId,
       });
-      const generated = await generateStandardVoiceover({ script: input.script, voice: input.voice, speed: input.speed, ffmpegCommand, tempDir: incomingRoot });
+      const generated = await generateStandardVoiceover({ script: input.script, voice: input.voice, speed: input.speed, provider: input.provider, ffmpegCommand, tempDir: incomingRoot });
       const durationPath = path.join(incomingRoot, `${crypto.randomUUID()}-duration.wav`);
       let durationSeconds;
       try { await fs.writeFile(durationPath, generated.audio); durationSeconds = await probeDuration(ffprobeCommand, durationPath); }
@@ -821,7 +912,8 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       if (!videoFile) return res.status(400).json({ error: "Choose an MP4 video for the timeline." });
       const body = z.object({
         title: z.string().trim().min(1).max(120).default("Khmer timeline voice"),
-        voice: z.string().trim().min(1).default("Kore").refine((value) => supportedTtsVoices.some((item) => item.id === value), "Choose a supported Gemini voice."),
+        provider: z.enum(["gemini", "kiritts"]).default(hasKiriConfig() ? "kiritts" : "gemini"),
+        voice: z.string().trim().min(1).default(hasKiriConfig() ? "Maly" : "Kore"),
         srt: z.string().max(500000).default(""),
         script: z.string().trim().max(30000).default(""),
         projectId: z.string().uuid().optional().nullable(),
@@ -844,7 +936,7 @@ export function registerPhase1Routes(app, { rootDir, ffmpegCommand, ffprobeComma
       const audioPath = ensureContained(storageRoot, path.join(timelineDir, "narration.wav"));
       if (audioFile) await normalizeVoiceClip(ffmpegCommand, audioFile.path, audioPath);
       else {
-        const generated = await generateStandardVoiceover({ script, voice: body.voice, speed: 1, ffmpegCommand, tempDir: incomingRoot });
+        const generated = await generateStandardVoiceover({ script, voice: body.voice, speed: 1, provider: body.provider, ffmpegCommand, tempDir: incomingRoot });
         await fs.writeFile(audioPath, generated.audio);
       }
       const mixedPath = ensureContained(storageRoot, path.join(timelineDir, "mixed.mp4"));

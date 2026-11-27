@@ -353,6 +353,7 @@ function aiProviderOptions() {
     ],
     video: [
       { id: "gemini", label: "Gemini Omni video + sound", configured: hasGeminiConfig(), description: "Generates clips with synchronized audio directions." },
+      { id: "google-flow", label: "Google Flow", configured: true, description: "Open Google Flow with a prepared prompt, then upload the exported MP4." },
       { id: "external-upload", label: "Another AI tool", configured: true, description: "Generate with another tool, then upload its MP4 through the same publishing flow." },
     ],
     media: {
@@ -1540,6 +1541,9 @@ app.post("/api/generate", async (req, res) => {
     await fs.mkdir(generatedDir, { recursive: true });
     if (videoProvider === "external-upload") {
       return res.status(400).json({ error: "Choose another AI tool, export its MP4, and use Use an existing video below to continue publishing." });
+    }
+    if (videoProvider === "google-flow") {
+      return res.status(409).json({ error: "Google Flow runs in its own web studio. Open Flow, generate the video, download the MP4, and upload it in ToolAiMe to continue.", code: "GOOGLE_FLOW_HANDOFF", flowUrl: "https://flow.google.com/?pli=1" });
     }
     if (!hasGeminiConfig()) {
       return res.status(503).json({
